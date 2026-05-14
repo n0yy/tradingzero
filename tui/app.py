@@ -40,6 +40,7 @@ class MetricsBar(Horizontal):
         yield MetricBox(id="tile-best-sharpe")
         yield MetricBox(id="tile-balance")
         yield MetricBox(id="tile-pnl")
+        yield MetricBox(id="tile-winrate")
         yield MetricBox(id="tile-promotions")
         yield MetricBox(id="tile-status")
 
@@ -59,8 +60,11 @@ class ChartPanel(Static):
     BARS = " ▁▂▃▄▅▆▇█"
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__("[dim]Waiting for data…[/dim]", **kwargs)
         self._sharpe_history: list[float] = []
+
+    def on_mount(self) -> None:
+        self._render_chart()
 
     def add_point(self, sharpe: float) -> None:
         self._sharpe_history.append(sharpe)
@@ -137,6 +141,154 @@ class ChartPanel(Static):
         self.update(header + "\n" + "\n".join(lines) + "\n" + x_axis + "\n" + gen_label)
 
 
+class ActionPanel(Static):
+    DEFAULT_CSS = """
+    ActionPanel {
+        border: solid #3a1a6b;
+        height: 1fr;
+        padding: 0 1;
+        overflow: hidden hidden;
+    }
+    """
+
+    FULL_BLOCK = "█"
+    BAR_WIDTH = 6
+
+    def __init__(self, **kwargs):
+        super().__init__("[dim]—[/dim]", **kwargs)
+        self._action_counts: dict | None = None
+        self._last_action: int | None = None
+        self._cumulative_buys: int = 0
+        self._cumulative_sells: int = 0
+
+    def on_mount(self) -> None:
+        self._draw()
+
+    def set_data(
+        self,
+        action_counts: dict,
+        last_action: int,
+        cumulative_buys: int,
+        cumulative_sells: int,
+    ) -> None:
+        self._action_counts = action_counts
+        self._last_action = last_action
+        self._cumulative_buys = cumulative_buys
+        self._cumulative_sells = cumulative_sells
+        self._draw()
+
+    def _draw(self) -> None:
+        if self._action_counts is None:
+            self.update("[dim]—[/dim]")
+            return
+
+        counts = self._action_counts
+        total = counts.get("buy", 0) + counts.get("hold", 0) + counts.get("sell", 0)
+
+        def bar(n: int) -> str:
+            filled = round((n / total) * self.BAR_WIDTH) if total > 0 else 0
+            return self.FULL_BLOCK * filled + " " * (self.BAR_WIDTH - filled)
+
+        buy_pct = counts.get("buy", 0) / total * 100 if total > 0 else 0
+        hold_pct = counts.get("hold", 0) / total * 100 if total > 0 else 0
+        sell_pct = counts.get("sell", 0) / total * 100 if total > 0 else 0
+
+        action_labels = {0: "HOLD", 1: "BUY", 2: "SELL"}
+        action_colors = {0: "dim", 1: "green", 2: "red"}
+        last = self._last_action if self._last_action is not None else 0
+        last_label = action_labels.get(last, "HOLD")
+        last_color = action_colors.get(last, "dim")
+
+        lines = [
+            "[bold dim]Action Distribution[/bold dim]",
+            f"[green]BUY  {bar(counts.get('buy', 0))} {buy_pct:4.0f}%[/green]",
+            f"[dim]HOLD {bar(counts.get('hold', 0))} {hold_pct:4.0f}%[/dim]",
+            f"[red]SELL {bar(counts.get('sell', 0))} {sell_pct:4.0f}%[/red]",
+            "",
+            "[bold dim]Last Action[/bold dim]",
+            f"[{last_color}]{last_label}[/{last_color}]",
+            "",
+            "[bold dim]Cumul Trades[/bold dim]",
+            f"[green]BUY  {self._cumulative_buys}[/green]",
+            f"[red]SELL {self._cumulative_sells}[/red]",
+        ]
+        self.update("\n".join(lines))
+
+
+class PricePanel(Static):
+    DEFAULT_CSS = """
+    PricePanel {
+        border: solid #1a6b3a;
+        height: 1fr;
+        padding: 0 1;
+        overflow: hidden hidden;
+    }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__("[dim]—[/dim]", **kwargs)
+        self._prices: list[float] = []
+        self._actions: list[int] = []
+
+    def on_mount(self) -> None:
+        self._draw()
+
+    def set_data(self, prices: list[float], actions: list[int]) -> None:
+        self._prices = prices
+        self._actions = actions
+        self._draw()
+
+    def on_resize(self) -> None:
+        self._draw()
+
+    def _draw(self) -> None:
+        if len(self._prices) < 2:
+            self.update("[dim]—[/dim]")
+            return
+
+        try:
+            import plotext as plt
+            plt.clf()
+            plt.plotsize(max(self.size.width - 4, 20), max(self.size.height - 2, 6))
+            plt.plot(self._prices, color="cyan")
+
+            buy_x = [i for i, a in enumerate(self._actions) if a == 1]
+            buy_y = [self._prices[i] for i in buy_x]
+            sell_x = [i for i, a in enumerate(self._actions) if a == 2]
+            sell_y = [self._prices[i] for i in sell_x]
+
+            if buy_x:
+                plt.scatter(buy_x, buy_y, color="green", marker="▲")
+            if sell_x:
+                plt.scatter(sell_x, sell_y, color="red", marker="▼")
+
+            self.update(plt.build())
+        except Exception:
+            self.update("[dim]—[/dim]")
+
+
+class ChartArea(Horizontal):
+    DEFAULT_CSS = """
+    ChartArea {
+        height: 1fr;
+    }
+    ChartArea ChartPanel {
+        width: 2fr;
+    }
+    ChartArea PricePanel {
+        width: 2fr;
+    }
+    ChartArea ActionPanel {
+        width: 1fr;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield ChartPanel(id="chart")
+        yield PricePanel(id="price-panel")
+        yield ActionPanel(id="action-panel")
+
+
 class TUIApp(App):
     ENABLE_COMMAND_PALETTE = False
 
@@ -172,7 +324,7 @@ class TUIApp(App):
 
     RichLog {
         border: solid #2a2a2a;
-        height: 12;
+        height: 4;
     }
     """
 
@@ -188,7 +340,7 @@ class TUIApp(App):
 
     def compose(self) -> ComposeResult:
         yield MetricsBar()
-        yield ChartPanel(id="chart")
+        yield ChartArea()
         yield RichLog(id="log", highlight=True, markup=True, max_lines=200)
         yield Footer()
 
@@ -203,6 +355,7 @@ class TUIApp(App):
         self.query_one("#tile-best-sharpe", MetricBox).set_value("Best Sharpe", "—", "bold green")
         self.query_one("#tile-balance", MetricBox).set_value("Balance", "—", "bold cyan")
         self.query_one("#tile-pnl", MetricBox).set_value("PnL", "—", "bold white")
+        self.query_one("#tile-winrate", MetricBox).set_value("Win Rate", "—", "bold white")
         self.query_one("#tile-promotions", MetricBox).set_value("Promotions", "0", "bold magenta")
         self.query_one("#tile-status", MetricBox).set_value("Status", "TRAINING", "bold yellow")
 
@@ -214,6 +367,10 @@ class TUIApp(App):
                 self.call_from_thread(self._handle_update, payload)
             except Empty:
                 continue
+
+    def _update_winrate_tile(self, tile: "MetricBox", win_rate: float) -> None:
+        style = "bold green" if win_rate >= 0.5 else "bold red"
+        tile.set_value("Win Rate", f"{win_rate * 100:.0f}%", style)
 
     def _handle_update(self, payload: dict) -> None:
         if payload.get("type") == "stop":
@@ -263,6 +420,10 @@ class TUIApp(App):
             pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
             self.query_one("#tile-pnl", MetricBox).set_value("PnL", pnl_str, pnl_style)
 
+        win_rate = payload.get("win_rate", None)
+        if win_rate is not None:
+            self._update_winrate_tile(self.query_one("#tile-winrate", MetricBox), win_rate)
+
         self.query_one("#tile-promotions", MetricBox).set_value(
             "Promotions", str(self._promotions), "bold magenta"
         )
@@ -277,17 +438,38 @@ class TUIApp(App):
 
         self.query_one("#chart", ChartPanel).add_point(current_sharpe)
 
+        action_counts = payload.get("action_counts", None)
+        if action_counts is not None:
+            self.query_one("#action-panel", ActionPanel).set_data(
+                action_counts=action_counts,
+                last_action=payload.get("action_series", [0])[-1] if payload.get("action_series") else 0,
+                cumulative_buys=payload.get("cumulative_buys", 0),
+                cumulative_sells=payload.get("cumulative_sells", 0),
+            )
+
+        price_series = payload.get("price_series", None)
+        action_series = payload.get("action_series", None)
+        if price_series is not None and action_series is not None:
+            self.query_one("#price-panel", PricePanel).set_data(
+                prices=price_series,
+                actions=action_series,
+            )
+
         sharpe_color = "green" if current_sharpe >= 0 else "red"
         pnl_log = ""
         if pnl is not None:
             pnl_color = "green" if pnl >= 0 else "red"
             pnl_sign = "+" if pnl >= 0 else "-"
             pnl_log = f" | pnl=[{pnl_color}]{pnl_sign}${abs(pnl):,.2f}[/{pnl_color}]"
+        win_log = ""
+        if win_rate is not None:
+            win_log = f" | win={win_rate * 100:.0f}%"
         msg = (
             f"[cyan]Gen {generation}[/cyan]"
             f" | sharpe=[{sharpe_color}]{current_sharpe:.4f}[/{sharpe_color}]"
             f" | best=[green]{best_sharpe:.4f}[/green]"
             f"{pnl_log}"
+            f"{win_log}"
         )
         if promoted:
             msg += " | [bold green]★ PROMOTED[/bold green]"

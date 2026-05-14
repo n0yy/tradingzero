@@ -6,6 +6,9 @@ from gymnasium import spaces
 from data.fetcher import normalize_window
 
 
+SIZE_MAP = {0: 0.25, 1: 0.50, 2: 0.75, 3: 1.00}
+
+
 class CryptoEnv(gym.Env):
     metadata = {"render_modes": []}
 
@@ -25,15 +28,16 @@ class CryptoEnv(gym.Env):
         self.episode_length = episode_length
 
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(window_size, 6), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(window_size, 7), dtype=np.float32
         )
-        self.action_space = spaces.Discrete(3)  # 0=Hold, 1=Buy, 2=Sell
+        self.action_space = spaces.MultiDiscrete([3, 4])  # [direction, size]
 
         self._current_step = 0
         self._start_idx = 0
         self._position = 0.0
         self._balance = initial_balance
         self._returns: list[float] = []
+        self._avg_entry_price = 0.0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -43,30 +47,55 @@ class CryptoEnv(gym.Env):
         self._position = 0.0
         self._balance = self.initial_balance
         self._returns = []
+        self._avg_entry_price = 0.0
         obs = self._get_obs()
         return obs, {}
 
     def _get_obs(self) -> np.ndarray:
         idx = self._start_idx + self._current_step
         window = self.data.iloc[idx: idx + self.window_size].copy()
-        normalized = normalize_window(window)
-        normalized[:, -1] = self._position
-        return normalized.astype(np.float32)
+        normalized = normalize_window(window)  # shape (window_size, 6)
 
-    def step(self, action: int):
+        current_price = float(self.data.iloc[idx + self.window_size - 1]["close"])
+        if self._position > 0.0 and self._avg_entry_price > 0.0:
+            unrealized_pnl = (current_price - self._avg_entry_price) * self._position / self.initial_balance
+        else:
+            unrealized_pnl = 0.0
+
+        obs = np.zeros((self.window_size, 7), dtype=np.float32)
+        obs[:, :6] = normalized
+        obs[:, 5] = self._position
+        obs[:, 6] = unrealized_pnl
+        return obs
+
+    def step(self, action):
+        action = np.asarray(action)
+        direction = int(action[0])
+        size = int(action[1])
+
         idx = self._start_idx + self._current_step
         current_price = float(self.data.iloc[idx + self.window_size - 1]["close"])
         next_price = float(self.data.iloc[idx + self.window_size]["close"])
 
+        delta = SIZE_MAP[size]
         prev_position = self._position
-        cost = 0.0
 
-        if action == 1 and self._position == 0.0:
-            self._position = 1.0
-            cost = self.transaction_cost
-        elif action == 2 and self._position == 1.0:
-            self._position = 0.0
-            cost = self.transaction_cost
+        if direction == 1:  # Buy
+            new_position = min(self._position + delta, 1.0)
+            traded = new_position - self._position
+            if traded > 0:
+                self._avg_entry_price = (
+                    (self._avg_entry_price * self._position + current_price * traded) / new_position
+                )
+            self._position = new_position
+        elif direction == 2:  # Sell
+            self._position = max(self._position - delta, 0.0)
+            if self._position == 0.0:
+                self._avg_entry_price = 0.0
+        # direction == 0: Hold — position unchanged
+
+        traded = abs(self._position - prev_position)
+        cost = self.transaction_cost * traded
 
         price_return = (next_price - current_price) / current_price if current_price != 0 else 0.0
         step_return = price_return * self._position - cost
@@ -74,7 +103,6 @@ class CryptoEnv(gym.Env):
         self._returns.append(step_return)
 
         reward = self._compute_reward()
-        # add small immediate signal so agent gets gradient even when holding
         reward += price_return * self._position * 0.1
 
         self._current_step += 1
@@ -86,6 +114,7 @@ class CryptoEnv(gym.Env):
             "balance": self._balance,
             "position": self._position,
             "step": self._current_step,
+            "cost": cost,
         }
         return obs, reward, terminated, truncated, info
 

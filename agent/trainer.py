@@ -43,6 +43,8 @@ class Trainer:
         self.best_checkpoint: Optional[Path] = None
         self._stop = False
         self._model: Optional[PPO] = None
+        self._cumulative_buys: int = 0
+        self._cumulative_sells: int = 0
 
     def _build_model(self) -> PPO:
         return PPO(
@@ -59,20 +61,44 @@ class Trainer:
     def _evaluate(self, model: PPO, n_eval_episodes: int = 5) -> dict:
         episode_rewards: list[float] = []
         episode_final_balances: list[float] = []
+        wins = 0
+        action_counts = {"buy": 0, "hold": 0, "sell": 0}
+        price_series: list[float] = []
+        action_series: list[int] = []
 
-        for _ in range(n_eval_episodes):
+        for ep in range(n_eval_episodes):
             obs, _ = self.env.reset()
             done = False
             total_reward = 0.0
             last_balance = self.env.initial_balance
+            ep_prices: list[float] = []
+            ep_actions: list[int] = []
             while not done:
                 action, _ = model.predict(obs, deterministic=False)
-                obs, reward, terminated, truncated, info = self.env.step(int(action))
+                action_int = int(action) if np.ndim(action) == 0 else int(action[0])
+                obs, reward, terminated, truncated, info = self.env.step(action)
                 total_reward += float(reward)
                 last_balance = info.get("balance", last_balance)
                 done = terminated or truncated
+
+                if action_int == 0:
+                    action_counts["hold"] += 1
+                elif action_int == 1:
+                    action_counts["buy"] += 1
+                else:
+                    action_counts["sell"] += 1
+
+                ep_prices.append(float(info.get("balance", last_balance)))
+                ep_actions.append(action_int)
+
             episode_rewards.append(total_reward)
             episode_final_balances.append(last_balance)
+            if last_balance > self.env.initial_balance:
+                wins += 1
+
+            if ep == 0:
+                price_series = ep_prices
+                action_series = ep_actions
 
         rewards = np.array(episode_rewards, dtype=np.float32)
         std = np.std(rewards)
@@ -81,12 +107,17 @@ class Trainer:
 
         avg_final_balance = float(np.mean(episode_final_balances))
         pnl = avg_final_balance - self.env.initial_balance
+        win_rate = wins / n_eval_episodes if n_eval_episodes > 0 else 0.0
 
         return {
             "sharpe": sharpe,
             "final_balance": avg_final_balance,
             "pnl": pnl,
             "initial_balance": self.env.initial_balance,
+            "win_rate": win_rate,
+            "action_counts": action_counts,
+            "price_series": price_series,
+            "action_series": action_series,
         }
 
     def _save_checkpoint(self, model: PPO, name: str) -> Path:
@@ -149,7 +180,13 @@ class Trainer:
             final_balance = eval_result["final_balance"]
             pnl = eval_result["pnl"]
             initial_balance = eval_result["initial_balance"]
-            logger.info(f"  Sharpe: {current_sharpe:.4f} (best: {self.best_sharpe:.4f}) | Balance: {final_balance:.2f} | PnL: {pnl:+.2f}")
+            win_rate = eval_result.get("win_rate", 0.0)
+            action_counts = eval_result.get("action_counts", {"buy": 0, "hold": 0, "sell": 0})
+            price_series = eval_result.get("price_series", [])
+            action_series = eval_result.get("action_series", [])
+            self._cumulative_buys += action_counts.get("buy", 0)
+            self._cumulative_sells += action_counts.get("sell", 0)
+            logger.info(f"  Sharpe: {current_sharpe:.4f} (best: {self.best_sharpe:.4f}) | Balance: {final_balance:.2f} | PnL: {pnl:+.2f} | win={win_rate*100:.0f}%")
 
             if (generation + 1) % self.checkpoint_interval == 0:
                 ckpt = self._save_checkpoint(self._model, f"gen_{generation + 1:04d}")
@@ -187,6 +224,12 @@ class Trainer:
                 "final_balance": final_balance,
                 "pnl": pnl,
                 "initial_balance": initial_balance,
+                "win_rate": win_rate,
+                "action_counts": action_counts,
+                "price_series": price_series,
+                "action_series": action_series,
+                "cumulative_buys": self._cumulative_buys,
+                "cumulative_sells": self._cumulative_sells,
             })
 
         if self.wandb_project:

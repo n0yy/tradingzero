@@ -1,0 +1,13 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/*.pyo": true,
+    "**/.pytest_cache": true,
+    "**/.hypothesis": true,
+    "**/*.egg-info": true,
+    "**/.coverage": true,
+    "**/htmlcov": true,
+    ".venv": true,
+  }
+}

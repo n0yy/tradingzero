@@ -18,9 +18,36 @@ from stable_baselines3 import PPO
 from logger import logger
 
 
-ACTIONS = {0: "HOLD", 1: "BUY ", 2: "SELL"}
+SIZE_LABELS = {0: "25%", 1: "50%", 2: "75%", 3: "100%"}
 ACTION_COLORS = {0: "\033[90m", 1: "\033[92m", 2: "\033[91m"}
 RESET = "\033[0m"
+
+
+def format_action(action: np.ndarray) -> str:
+    direction = int(action[0])
+    size = int(action[1])
+    if direction == 0:
+        return "HOLD"
+    elif direction == 1:
+        return f"BUY {SIZE_LABELS[size]}"
+    else:
+        return f"SELL {SIZE_LABELS[size]}"
+
+
+def check_compat(model: PPO, env) -> bool:
+    model_obs = model.observation_space
+    env_obs = env.observation_space
+    model_act = model.action_space
+    env_act = env.action_space
+
+    ok = True
+    if model_obs.shape != env_obs.shape:
+        print(f"WARNING: obs space mismatch — checkpoint={model_obs.shape}, env={env_obs.shape}")
+        ok = False
+    if str(model_act) != str(env_act):
+        print(f"WARNING: action space mismatch — checkpoint={model_act}, env={env_act}")
+        ok = False
+    return ok
 
 
 def load_config(path: str = "config.yaml") -> dict:
@@ -61,11 +88,15 @@ def run(checkpoint: str, config: dict) -> None:
     logger.info(f"Loading checkpoint: {checkpoint}")
     model = PPO.load(checkpoint, env=env)
 
+    if not check_compat(model, env):
+        logger.error("Checkpoint is incompatible with current env. Aborting.")
+        return
+
     obs, _ = env.reset()
     done = False
     step = 0
     trades: list[dict] = []
-    prev_action = -1
+    prev_action_str = ""
 
     print(f"\n{'─' * 60}")
     print(f"  TradingZero — Best Agent Inference")
@@ -73,28 +104,28 @@ def run(checkpoint: str, config: dict) -> None:
     print(f"  Symbol     : {config['data']['symbol']} {config['data']['timeframe']}")
     print(f"  Balance    : ${config['env']['initial_balance']:,.2f}")
     print(f"{'─' * 60}\n")
-    print(f"  {'Step':>5}  {'Action':<6}  {'Balance':>12}  {'PnL':>10}")
-    print(f"  {'─'*5}  {'─'*6}  {'─'*12}  {'─'*10}")
+    print(f"  {'Step':>5}  {'Action':<12}  {'Balance':>12}  {'PnL':>10}")
+    print(f"  {'─'*5}  {'─'*12}  {'─'*12}  {'─'*10}")
 
     while not done:
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = env.step(int(action))
+        obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
         step += 1
 
         balance = info["balance"]
         pnl = balance - config["env"]["initial_balance"]
         pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
-        color = ACTION_COLORS[int(action)]
+        action_str = format_action(action)
+        color = ACTION_COLORS[int(action[0])]
 
-        # only print on action change or every 50 steps to avoid spam
-        if int(action) != prev_action or step % 50 == 0:
-            print(f"  {step:>5}  {color}{ACTIONS[int(action)]}{RESET}    ${balance:>11,.2f}  {pnl_str:>10}")
+        if action_str != prev_action_str or step % 50 == 0:
+            print(f"  {step:>5}  {color}{action_str:<12}{RESET}  ${balance:>11,.2f}  {pnl_str:>10}")
 
-        if int(action) != prev_action and int(action) in (1, 2):
-            trades.append({"step": step, "action": ACTIONS[int(action)], "balance": balance})
+        if action_str != prev_action_str and int(action[0]) in (1, 2):
+            trades.append({"step": step, "action": action_str, "balance": balance})
 
-        prev_action = int(action)
+        prev_action_str = action_str
 
     final_balance = info["balance"]
     pnl = final_balance - config["env"]["initial_balance"]
@@ -137,3 +168,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
