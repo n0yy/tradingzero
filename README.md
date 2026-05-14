@@ -4,18 +4,26 @@ A Reinforcement Learning trading system that learns crypto strategies purely fro
 
 Inspired by AlphaZero.
 
+## Status
+
+Active development. Latest run (2026-05-14):
+- Best Sharpe: **2.1152** @ generation 8
+- Initial balance: $10,000 | tracked via real-time PnL dashboard
+- Training on BTC/USDT 15m candles (Binance)
+
 ## How It Works
 
 1. **Data Layer** — fetches OHLCV candles from exchanges (Binance, OKX, Bybit) via CCXT and normalizes them into rolling windows.
-2. **Environment** — a custom Gymnasium env where the agent observes 60 candles and chooses Buy, Hold, or Sell. Reward is based on Sharpe ratio with a transaction cost penalty.
-3. **Self-Play Training** — PPO (via Stable-Baselines3) trains against the best prior checkpoint. When the current agent's Sharpe exceeds the best by a threshold, it gets promoted.
-4. **TUI Monitor** — a real-time terminal dashboard (Textual + Rich + Plotext) showing equity curves, metrics, and training logs.
+2. **Environment** — a custom Gymnasium env where the agent observes 60 candles and chooses Buy, Hold, or Sell. Reward is Sharpe ratio + immediate price return signal, with transaction cost penalty.
+3. **Self-Play Training** — PPO (via Stable-Baselines3) trains across generations. When the current agent's Sharpe exceeds the best by a threshold, it gets promoted and saved as the new best checkpoint.
+4. **TUI Monitor** — a real-time terminal dashboard (Textual + Rich) showing Sharpe chart, balance, PnL, and training logs.
 
 ## Architecture
 
 ```
 main.py                 ← entry point & orchestrator
-├── tui/app.py          ← real-time TUI monitor
+├── logger.py           ← shared logger (Loguru)
+├── tui/app.py          ← real-time TUI dashboard
 ├── agent/trainer.py    ← PPO self-play loop
 ├── env/crypto_env.py   ← Gymnasium environment
 └── data/fetcher.py     ← CCXT data pipeline
@@ -27,52 +35,66 @@ main.py                 ← entry point & orchestrator
 |----------|-----------|
 | RL / ML | PyTorch, Stable-Baselines3, Gymnasium |
 | Data | CCXT, Pandas, NumPy |
-| TUI | Textual, Rich, Plotext |
+| TUI | Textual, Rich |
 | Testing | Pytest, pytest-cov, pytest-mock, Hypothesis |
 | Tooling | Weights & Biases, python-dotenv, Loguru |
 
 ## Getting Started
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (requires uv)
+uv sync
 
 # Configure
 cp config.yaml.example config.yaml
-# Edit config.yaml with your exchange API keys and preferences
+# Edit config.yaml — set exchange, symbol, hyperparameters
 
 # Run training with TUI
-python main.py
+uv run python main.py
 ```
 
 ## Configuration
 
 All settings live in `config.yaml`:
 
-- **data** — exchange, symbol, timeframe, window size
-- **env** — initial balance, transaction cost, episode length
-- **agent** — PPO hyperparameters, total episodes, promote threshold
-- **self_play** — checkpoint interval and directory
-- **logging** — Weights & Biases project name
+| Section | Key settings |
+|---------|-------------|
+| `data` | exchange, symbol, timeframe, window_size |
+| `env` | initial_balance, transaction_cost, episode_length |
+| `agent` | learning_rate, n_steps, batch_size, total_episodes, promote_threshold |
+| `self_play` | checkpoint_interval, checkpoint_dir |
+| `logging` | wandb, project_name |
+
+## TUI Dashboard
+
+The terminal dashboard updates in real-time every generation:
+
+- **Metrics bar** — Generation, Progress %, Sharpe, Best Sharpe, Balance, PnL, Promotions, Status
+- **Chart** — Sparkline of Sharpe ratio over generations (green = positive, red = negative)
+- **Log** — Per-generation log with Sharpe, best Sharpe, and PnL
+
+Press `q` to quit.
 
 ## Testing
 
 ```bash
-# Run all tests with coverage
-pytest --cov=tradingzero --cov-report=term-missing
+uv run pytest tests/unit/ -v
 ```
 
 Test layers:
-- **Unit** (`tests/unit/`) — isolated function tests with mocked externals
+- **Unit** (`tests/unit/`) — isolated tests for TUI components, env, data pipeline
 - **Property-based** — Hypothesis tests for environment edge cases
 - **Integration** (`tests/integration/`) — end-to-end short training loops
 
 ## Milestones
 
-1. **Data Layer** — fetch, normalize, and cache OHLCV data
-2. **Environment** — Gymnasium env with valid state/action/reward
-3. **Self-Play Loop** — multi-generation training with checkpoint promotion
-4. **TUI** — real-time monitoring dashboard
+- [x] Data layer — fetch, normalize, and cache OHLCV data
+- [x] Environment — Gymnasium env with Sharpe-based reward + price return signal
+- [x] Self-play loop — multi-generation PPO with checkpoint promotion
+- [x] TUI dashboard — real-time metrics, sparkline chart, PnL tracking
+- [ ] Multi-asset support
+- [ ] Backtesting module
+- [ ] Strategy export
 
 ## License
 
