@@ -1,4 +1,4 @@
-import os
+import argparse
 import signal
 import threading
 from pathlib import Path
@@ -15,7 +15,7 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
-def build_trainer(config: dict, env, queue: Queue, checkpoint_dir: str):
+def build_trainer(config: dict, env, queue: Queue, checkpoint_dir: str, resume: bool = True):
     from agent.trainer import Trainer
     return Trainer(
         env=env,
@@ -29,6 +29,7 @@ def build_trainer(config: dict, env, queue: Queue, checkpoint_dir: str):
         checkpoint_interval=config["self_play"]["checkpoint_interval"],
         update_queue=queue,
         wandb_project=config["logging"]["project_name"] if config["logging"]["wandb"] else None,
+        resume=resume,
     )
 
 
@@ -63,17 +64,26 @@ def fetch_data(config: dict):
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="TradingZero training")
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Start training from scratch, ignoring existing checkpoints",
+    )
+    args = parser.parse_args()
+
     load_dotenv()
     config = load_config()
     logger.info("TradingZero starting up")
     logger.info(f"Exchange: {config['data']['exchange']} | Symbol: {config['data']['symbol']}")
+    logger.info(f"Resume: {not args.no_resume}")
 
     data = fetch_data(config)
     env = build_env(config, data)
 
     queue: Queue = Queue()
     checkpoint_dir = config["self_play"]["checkpoint_dir"]
-    trainer = build_trainer(config, env, queue, checkpoint_dir)
+    trainer = build_trainer(config, env, queue, checkpoint_dir, resume=not args.no_resume)
 
     def handle_shutdown(signum, frame):
         logger.info("Shutdown signal received — stopping trainer...")

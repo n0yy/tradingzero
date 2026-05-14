@@ -23,6 +23,7 @@ class Trainer:
         checkpoint_interval: int = 10,
         update_queue: Optional[Queue] = None,
         wandb_project: Optional[str] = None,
+        resume: bool = True,
     ):
         self.env = env
         self.checkpoint_dir = Path(checkpoint_dir)
@@ -37,6 +38,7 @@ class Trainer:
         self.update_queue = update_queue
         self.wandb_project = wandb_project
 
+        self.resume = resume
         self.best_sharpe: float = -np.inf
         self.best_checkpoint: Optional[Path] = None
         self._stop = False
@@ -124,7 +126,16 @@ class Trainer:
                 },
             )
 
-        self._model = self._build_model()
+        best_path = self.checkpoint_dir / "best.zip"
+        if self.resume and best_path.exists():
+            logger.info(f"Resuming from checkpoint: {best_path}")
+            self._model = PPO.load(str(best_path), env=self.env)
+        else:
+            if not self.resume:
+                logger.info("Starting from scratch (--no-resume)")
+            else:
+                logger.info("No checkpoint found — starting from scratch")
+            self._model = self._build_model()
 
         for generation in range(self.total_generations):
             if self._stop:

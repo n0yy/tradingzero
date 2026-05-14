@@ -29,7 +29,7 @@ def test_wandb_init_called_on_run(tmp_path, mocker):
         batch_size=32,
         wandb_project="test_project",
     )
-    mocker.patch.object(trainer, "_evaluate_sharpe", return_value=0.1)
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
     trainer.run()
 
     mock_wandb.init.assert_called_once()
@@ -54,7 +54,7 @@ def test_wandb_log_called_per_generation(tmp_path, mocker):
         batch_size=32,
         wandb_project="test_project",
     )
-    mocker.patch.object(trainer, "_evaluate_sharpe", return_value=0.1)
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
     trainer.run()
 
     assert mock_wandb.log.call_count == 3
@@ -79,7 +79,7 @@ def test_wandb_finish_called_after_run(tmp_path, mocker):
         batch_size=32,
         wandb_project="test_project",
     )
-    mocker.patch.object(trainer, "_evaluate_sharpe", return_value=0.1)
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
     trainer.run()
 
     mock_wandb.finish.assert_called_once()
@@ -99,7 +99,7 @@ def test_wandb_disabled_when_no_project(tmp_path, mocker):
         batch_size=32,
         wandb_project=None,
     )
-    mocker.patch.object(trainer, "_evaluate_sharpe", return_value=0.1)
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
     trainer.run()
 
     mock_wandb.init.assert_not_called()

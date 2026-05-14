@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup config train run test lint clean checkpoints
+.PHONY: help setup config train resume run test test-unit lint clean checkpoints
 
 help:
 	@echo ""
@@ -8,10 +8,11 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    make setup       Install dependencies via uv"
-	@echo "    make config      Copy config.yaml.example → config.yaml"
+	@echo "    make config      Copy config.yaml.example -> config.yaml"
 	@echo ""
 	@echo "  Run"
-	@echo "    make train       Start training with TUI dashboard"
+	@echo "    make train       Start training from scratch (ignores existing checkpoint)"
+	@echo "    make resume      Resume training from best checkpoint"
 	@echo "    make run         Run best checkpoint inference"
 	@echo "    make run CHECKPOINT=agent/checkpoints/gen_0200.zip"
 	@echo ""
@@ -35,6 +36,9 @@ config:
 	fi
 
 train:
+	uv run python main.py --no-resume
+
+resume:
 	uv run python main.py
 
 CHECKPOINT ?= agent/checkpoints/best.zip

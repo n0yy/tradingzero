@@ -82,7 +82,7 @@ def test_promotion_triggers_when_sharpe_improves(tmp_path, mocker):
         batch_size=32,
     )
     # gen 1: sets baseline=1.0, gen 2: 2.0 - 1.0 = 1.0 >= 0.05 → promote
-    mocker.patch.object(trainer, "_evaluate_sharpe", side_effect=[1.0, 2.0])
+    mocker.patch.object(trainer, "_evaluate", side_effect=[{"sharpe": 1.0, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}, {"sharpe": 2.0, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}])
     trainer.run()
     assert trainer.best_sharpe == 2.0
     assert (tmp_path / "best.zip").exists()
@@ -101,7 +101,7 @@ def test_promotion_does_not_trigger_below_threshold(tmp_path, mocker):
         batch_size=32,
     )
     # gen 1 sets baseline=0.1, gen 2: 0.15 - 0.1 = 0.05 < 0.5 threshold → no promote
-    mocker.patch.object(trainer, "_evaluate_sharpe", side_effect=[0.1, 0.15])
+    mocker.patch.object(trainer, "_evaluate", side_effect=[{"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}, {"sharpe": 0.15, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}])
     trainer = Trainer(
         env=env,
         checkpoint_dir=str(tmp_path),
@@ -110,7 +110,7 @@ def test_promotion_does_not_trigger_below_threshold(tmp_path, mocker):
         n_steps=64,
         batch_size=32,
     )
-    mocker.patch.object(trainer, "_evaluate_sharpe", side_effect=[0.1, 0.15])
+    mocker.patch.object(trainer, "_evaluate", side_effect=[{"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}, {"sharpe": 0.15, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}])
     trainer.run()
     assert not (tmp_path / "best.zip").exists()
 
@@ -130,7 +130,7 @@ def test_update_queue_receives_generation_payload(tmp_path, mocker):
         batch_size=32,
         update_queue=queue,
     )
-    mocker.patch.object(trainer, "_evaluate_sharpe", return_value=0.1)
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
     trainer.run()
     assert queue.qsize() == 2
     payload = queue.get()
