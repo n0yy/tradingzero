@@ -6,38 +6,38 @@ from unittest.mock import patch
 # --- TUIApp instantiation ---
 
 def test_tui_app_instantiates():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     app = TUIApp(update_queue=Queue())
     assert app is not None
 
 
 def test_tui_app_has_update_queue():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     queue = Queue()
     app = TUIApp(update_queue=queue)
     assert app.update_queue is queue
 
 
 def test_stop_requested_false_on_init():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     app = TUIApp(update_queue=Queue())
     assert app._stop_requested is False
 
 
 def test_promotions_zero_on_init():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     app = TUIApp(update_queue=Queue())
     assert app._promotions == 0
 
 
 def test_initial_balance_zero_on_init():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     app = TUIApp(update_queue=Queue())
     assert app._initial_balance == 0.0
 
 
 def test_action_quit_sets_stop_requested():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     app = TUIApp(update_queue=Queue())
     with patch.object(app, "exit"):
         app.action_quit()
@@ -47,7 +47,7 @@ def test_action_quit_sets_stop_requested():
 # --- _handle_update behavior ---
 
 def test_handle_update_increments_promotions_on_promote():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     app = TUIApp(update_queue=Queue())
     assert app._promotions == 0
     app._promotions += 1
@@ -57,7 +57,7 @@ def test_handle_update_increments_promotions_on_promote():
 # --- ChartPanel ---
 
 def test_chart_panel_add_point_does_not_raise():
-    from tui.app import ChartPanel
+    from apps.tui.app import ChartPanel
     panel = ChartPanel()
     panel.add_point(0.1)
     panel.add_point(0.2)
@@ -65,14 +65,14 @@ def test_chart_panel_add_point_does_not_raise():
 
 
 def test_chart_panel_single_point_skips_render():
-    from tui.app import ChartPanel
+    from apps.tui.app import ChartPanel
     panel = ChartPanel()
     panel.add_point(0.5)
     assert len(panel._sharpe_history) == 1
 
 
 def test_chart_panel_negative_sharpe_tracked():
-    from tui.app import ChartPanel
+    from apps.tui.app import ChartPanel
     panel = ChartPanel()
     panel.add_point(-0.3)
     panel.add_point(-0.1)
@@ -82,14 +82,14 @@ def test_chart_panel_negative_sharpe_tracked():
 # --- MetricBox ---
 
 def test_metric_box_set_value_does_not_raise():
-    from tui.app import MetricBox
+    from apps.tui.app import MetricBox
     box = MetricBox()
     with patch.object(box, "update"):
         box.set_value("Sharpe", "0.4200", "bold green")
 
 
 def test_metric_box_set_value_builds_correct_text():
-    from tui.app import MetricBox
+    from apps.tui.app import MetricBox
     box = MetricBox()
     captured = {}
     def fake_update(text):
@@ -102,7 +102,7 @@ def test_metric_box_set_value_builds_correct_text():
 
 
 def test_metric_box_balance_format():
-    from tui.app import MetricBox
+    from apps.tui.app import MetricBox
     box = MetricBox()
     captured = {}
     def fake_update(text):
@@ -115,7 +115,7 @@ def test_metric_box_balance_format():
 
 
 def test_metric_box_pnl_positive():
-    from tui.app import MetricBox
+    from apps.tui.app import MetricBox
     box = MetricBox()
     captured = {}
     def fake_update(text):
@@ -128,7 +128,7 @@ def test_metric_box_pnl_positive():
 
 
 def test_metric_box_pnl_negative():
-    from tui.app import MetricBox
+    from apps.tui.app import MetricBox
     box = MetricBox()
     captured = {}
     def fake_update(text):
@@ -141,7 +141,7 @@ def test_metric_box_pnl_negative():
 
 
 def test_chart_panel_all_zeros_does_not_raise():
-    from tui.app import ChartPanel
+    from apps.tui.app import ChartPanel
     from unittest.mock import patch, MagicMock
     panel = ChartPanel()
     # simulate size so _render_chart doesn't bail early
@@ -154,7 +154,7 @@ def test_chart_panel_all_zeros_does_not_raise():
 
 
 def test_chart_panel_flat_nonzero_does_not_raise():
-    from tui.app import ChartPanel
+    from apps.tui.app import ChartPanel
     from unittest.mock import patch, MagicMock
     panel = ChartPanel()
     panel._size = MagicMock()
@@ -168,14 +168,14 @@ def test_chart_panel_flat_nonzero_does_not_raise():
 # --- Issue #11: Win Rate tile ---
 
 def test_metrics_bar_has_winrate_tile():
-    from tui.app import MetricsBar
+    from apps.tui.app import MetricsBar
     bar = MetricsBar()
     ids = [child.id for child in bar.compose()]
     assert "tile-winrate" in ids
 
 
 def test_winrate_tile_between_pnl_and_promotions():
-    from tui.app import MetricsBar
+    from apps.tui.app import MetricsBar
     bar = MetricsBar()
     ids = [child.id for child in bar.compose()]
     pnl_idx = ids.index("tile-pnl")
@@ -185,7 +185,7 @@ def test_winrate_tile_between_pnl_and_promotions():
 
 
 def test_handle_update_sets_winrate_green_when_above_50(mocker):
-    from tui.app import TUIApp, MetricBox
+    from apps.tui.app import TUIApp, MetricBox
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     tile = MetricBox(id="tile-winrate")
@@ -202,7 +202,7 @@ def test_handle_update_sets_winrate_green_when_above_50(mocker):
 
 
 def test_handle_update_sets_winrate_red_when_below_50(mocker):
-    from tui.app import TUIApp, MetricBox
+    from apps.tui.app import TUIApp, MetricBox
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     tile = MetricBox(id="tile-winrate")
@@ -218,13 +218,13 @@ def test_handle_update_sets_winrate_red_when_below_50(mocker):
 
 
 def test_winrate_tile_shows_placeholder_before_payload():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     # _init_tiles sets placeholder — verify tile-winrate is initialized with '—'
     captured = {}
     original_set_value = None
-    from tui.app import MetricBox
+    from apps.tui.app import MetricBox
     real_tile = MetricBox(id="tile-winrate")
     def fake_set_value(label, value, style="bold white"):
         captured["label"] = label
@@ -235,7 +235,7 @@ def test_winrate_tile_shows_placeholder_before_payload():
 
 
 def test_log_line_includes_win_rate(mocker):
-    from tui.app import TUIApp, MetricBox, RichLog
+    from apps.tui.app import TUIApp, MetricBox, RichLog
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     log_messages = []
@@ -267,13 +267,13 @@ def test_log_line_includes_win_rate(mocker):
 # --- Issue #12: ActionPanel + ChartArea ---
 
 def test_action_panel_instantiates():
-    from tui.app import ActionPanel
+    from apps.tui.app import ActionPanel
     panel = ActionPanel()
     assert panel is not None
 
 
 def test_action_panel_renders_placeholder_before_data():
-    from tui.app import ActionPanel
+    from apps.tui.app import ActionPanel
     from unittest.mock import patch
     panel = ActionPanel()
     captured = {}
@@ -283,7 +283,7 @@ def test_action_panel_renders_placeholder_before_data():
 
 
 def test_action_panel_renders_distribution_with_valid_payload():
-    from tui.app import ActionPanel
+    from apps.tui.app import ActionPanel
     from unittest.mock import patch
     panel = ActionPanel()
     panel.set_data(
@@ -302,7 +302,7 @@ def test_action_panel_renders_distribution_with_valid_payload():
 
 
 def test_action_panel_bar_length_proportional():
-    from tui.app import ActionPanel
+    from apps.tui.app import ActionPanel
     from unittest.mock import patch
     panel = ActionPanel()
     panel.set_data(
@@ -320,7 +320,7 @@ def test_action_panel_bar_length_proportional():
 
 
 def test_action_panel_last_action_green_for_buy():
-    from tui.app import ActionPanel
+    from apps.tui.app import ActionPanel
     from unittest.mock import patch
     panel = ActionPanel()
     panel.set_data(
@@ -336,7 +336,7 @@ def test_action_panel_last_action_green_for_buy():
 
 
 def test_action_panel_last_action_red_for_sell():
-    from tui.app import ActionPanel
+    from apps.tui.app import ActionPanel
     from unittest.mock import patch
     panel = ActionPanel()
     panel.set_data(
@@ -352,7 +352,7 @@ def test_action_panel_last_action_red_for_sell():
 
 
 def test_chart_area_composes_chart_and_action_panels():
-    from tui.app import ChartArea
+    from apps.tui.app import ChartArea
     area = ChartArea()
     children = list(area.compose())
     class_names = [type(c).__name__ for c in children]
@@ -361,7 +361,7 @@ def test_chart_area_composes_chart_and_action_panels():
 
 
 def test_tui_app_composes_with_chart_area():
-    from tui.app import TUIApp, ChartArea
+    from apps.tui.app import TUIApp, ChartArea
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     children = list(app.compose())
@@ -372,13 +372,13 @@ def test_tui_app_composes_with_chart_area():
 # --- Issue #13: PricePanel ---
 
 def test_price_panel_instantiates():
-    from tui.app import PricePanel
+    from apps.tui.app import PricePanel
     panel = PricePanel()
     assert panel is not None
 
 
 def test_price_panel_shows_placeholder_before_data():
-    from tui.app import PricePanel
+    from apps.tui.app import PricePanel
     from unittest.mock import patch
     panel = PricePanel()
     captured = {}
@@ -388,7 +388,7 @@ def test_price_panel_shows_placeholder_before_data():
 
 
 def test_price_panel_renders_with_valid_data():
-    from tui.app import PricePanel
+    from apps.tui.app import PricePanel
     from unittest.mock import patch
     panel = PricePanel()
     prices = [100.0 + i for i in range(20)]
@@ -402,7 +402,7 @@ def test_price_panel_renders_with_valid_data():
 
 
 def test_price_panel_single_point_shows_placeholder():
-    from tui.app import PricePanel
+    from apps.tui.app import PricePanel
     from unittest.mock import patch
     panel = PricePanel()
     panel.set_data(prices=[100.0], actions=[0])
@@ -413,7 +413,7 @@ def test_price_panel_single_point_shows_placeholder():
 
 
 def test_price_panel_empty_data_shows_placeholder():
-    from tui.app import PricePanel
+    from apps.tui.app import PricePanel
     from unittest.mock import patch
     panel = PricePanel()
     panel.set_data(prices=[], actions=[])
@@ -424,7 +424,7 @@ def test_price_panel_empty_data_shows_placeholder():
 
 
 def test_price_panel_resize_triggers_render():
-    from tui.app import PricePanel
+    from apps.tui.app import PricePanel
     from unittest.mock import patch, MagicMock
     panel = PricePanel()
     panel.set_data(prices=[100.0 + i for i in range(10)], actions=[0] * 10)
@@ -436,7 +436,7 @@ def test_price_panel_resize_triggers_render():
 # --- Issue #14: 3-column ChartArea layout ---
 
 def test_chart_area_has_three_panels():
-    from tui.app import ChartArea
+    from apps.tui.app import ChartArea
     area = ChartArea()
     children = list(area.compose())
     class_names = [type(c).__name__ for c in children]
@@ -446,7 +446,7 @@ def test_chart_area_has_three_panels():
 
 
 def test_chart_area_panel_order():
-    from tui.app import ChartArea, ChartPanel, PricePanel, ActionPanel
+    from apps.tui.app import ChartArea, ChartPanel, PricePanel, ActionPanel
     area = ChartArea()
     children = list(area.compose())
     assert isinstance(children[0], ChartPanel)
@@ -455,7 +455,7 @@ def test_chart_area_panel_order():
 
 
 def test_richlog_height_is_4():
-    from tui.app import TUIApp
+    from apps.tui.app import TUIApp
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     children = list(app.compose())
@@ -465,7 +465,7 @@ def test_richlog_height_is_4():
 
 
 def test_tui_app_composes_without_error():
-    from tui.app import TUIApp, ChartArea, PricePanel, ActionPanel, ChartPanel
+    from apps.tui.app import TUIApp, ChartArea, PricePanel, ActionPanel, ChartPanel
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     children = list(app.compose())
@@ -473,7 +473,7 @@ def test_tui_app_composes_without_error():
 
 
 def test_handle_update_sends_price_series_to_price_panel(mocker):
-    from tui.app import TUIApp, PricePanel
+    from apps.tui.app import TUIApp, PricePanel
     from queue import Queue
     app = TUIApp(update_queue=Queue())
     mock_panel = mocker.MagicMock()

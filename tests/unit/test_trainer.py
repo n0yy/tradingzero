@@ -132,11 +132,16 @@ def test_update_queue_receives_generation_payload(tmp_path, mocker):
     )
     mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
     trainer.run()
-    assert queue.qsize() == 2
-    payload = queue.get()
+    payloads = []
+    while not queue.empty():
+        payloads.append(queue.get())
+    generation_payloads = [payload for payload in payloads if payload.get("kind") != "step_batch"]
+    assert len(generation_payloads) == 2
+    payload = generation_payloads[0]
     assert "generation" in payload
     assert "current_sharpe" in payload
     assert "best_sharpe" in payload
+    assert any(payload.get("kind") == "step_batch" for payload in payloads)
 
 
 # --- Issue #10: action metrics & win rate ---
@@ -236,7 +241,13 @@ def test_notify_payload_includes_action_metrics(tmp_path, mocker):
         "action_series": [0, 1],
     })
     trainer.run()
-    payload = queue.get()
+    payload = None
+    while not queue.empty():
+        candidate = queue.get()
+        if candidate.get("kind") != "step_batch":
+            payload = candidate
+            break
+    assert payload is not None
     assert "win_rate" in payload
     assert "action_counts" in payload
     assert "cumulative_buys" in payload
@@ -269,8 +280,54 @@ def test_cumulative_buys_sells_increment_across_generations(tmp_path, mocker):
     }
     mocker.patch.object(trainer, "_evaluate", return_value=eval_result)
     trainer.run()
-    payloads = [queue.get() for _ in range(2)]
+    payloads = []
+    while not queue.empty():
+        payload = queue.get()
+        if payload.get("kind") != "step_batch":
+            payloads.append(payload)
     assert payloads[0]["cumulative_buys"] == 5
     assert payloads[1]["cumulative_buys"] == 10
     assert payloads[0]["cumulative_sells"] == 5
     assert payloads[1]["cumulative_sells"] == 10
+
+
+def test_trainer_step_stream_payload_contains_live_fields(tmp_path):
+    from queue import Queue
+    from env.crypto_env import CryptoEnv
+    from agent.trainer import Trainer
+    env = CryptoEnv(data=make_mock_data(), window_size=60, episode_length=50)
+    queue = Queue()
+    trainer = Trainer(env=env, checkpoint_dir=str(tmp_path), total_generations=1, update_queue=queue)
+
+    trainer._notify_step(
+        generation=1,
+        action=np.array([1, 2]),
+        reward=0.25,
+        info={"price": 30100.0, "position": 0.75, "balance": 10100.0},
+    )
+
+    payload = queue.get()
+    assert payload["kind"] == "step_batch"
+    assert payload["generation"] == 1
+    assert payload["price"] == 30100.0
+    assert payload["last_action"] == 1
+    assert payload["position"] == 0.75
+    assert payload["balance"] == 10100.0
+    assert payload["pnl"] == 100.0
+    assert payload["rolling_reward"] == 0.25
+    assert payload["equity_curve"][-1] == 10100.0
+
+
+def test_evaluate_returns_neutral_payload_when_stop_requested(tmp_path):
+    from env.crypto_env import CryptoEnv
+    from agent.trainer import Trainer
+    env = CryptoEnv(data=make_mock_data(), window_size=60, episode_length=50)
+    trainer = Trainer(env=env, checkpoint_dir=str(tmp_path), total_generations=1)
+
+    trainer.stop()
+    result = trainer._evaluate(trainer._build_model(), n_eval_episodes=2)
+
+    assert result["sharpe"] == 0.0
+    assert result["final_balance"] == env.initial_balance
+    assert result["pnl"] == 0.0
+    assert result["win_rate"] == 0.0

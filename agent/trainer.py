@@ -5,8 +5,29 @@ from typing import Optional
 import numpy as np
 import wandb
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
 
 from logger import logger
+
+
+class TrainingStreamCallback(BaseCallback):
+    def __init__(self, trainer: "Trainer", generation: int):
+        super().__init__()
+        self.trainer = trainer
+        self.generation = generation
+
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos") or []
+        actions = self.locals.get("actions")
+        rewards = self.locals.get("rewards")
+        if not infos:
+            return not self.trainer._stop
+
+        info = infos[0] or {}
+        action = actions[0] if actions is not None and len(actions) > 0 else 0
+        reward = rewards[0] if rewards is not None and len(rewards) > 0 else 0.0
+        self.trainer._notify_step(self.generation, action, reward, info)
+        return not self.trainer._stop
 
 
 class Trainer:
@@ -18,12 +39,13 @@ class Trainer:
         learning_rate: float = 3e-4,
         n_steps: int = 2048,
         batch_size: int = 64,
-        clip_range: float = 0.2,
+        clip_range: float = 0.1,
         promote_threshold: float = 0.05,
         checkpoint_interval: int = 10,
         update_queue: Optional[Queue] = None,
         wandb_project: Optional[str] = None,
         resume: bool = True,
+        resume_from: Optional[str] = None,
     ):
         self.env = env
         self.checkpoint_dir = Path(checkpoint_dir)
@@ -39,12 +61,15 @@ class Trainer:
         self.wandb_project = wandb_project
 
         self.resume = resume
+        self.resume_from = Path(resume_from) if resume_from else None
         self.best_sharpe: float = -np.inf
         self.best_checkpoint: Optional[Path] = None
         self._stop = False
         self._model: Optional[PPO] = None
         self._cumulative_buys: int = 0
         self._cumulative_sells: int = 0
+        self._stream_step: int = 0
+        self._equity_curve: list[float] = [float(env.initial_balance)]
 
     def _build_model(self) -> PPO:
         return PPO(
@@ -67,6 +92,8 @@ class Trainer:
         action_series: list[int] = []
 
         for ep in range(n_eval_episodes):
+            if self._stop:
+                break
             obs, _ = self.env.reset()
             done = False
             total_reward = 0.0
@@ -74,6 +101,8 @@ class Trainer:
             ep_prices: list[float] = []
             ep_actions: list[int] = []
             while not done:
+                if self._stop:
+                    break
                 action, _ = model.predict(obs, deterministic=False)
                 action_int = int(action) if np.ndim(action) == 0 else int(action[0])
                 obs, reward, terminated, truncated, info = self.env.step(action)
@@ -99,6 +128,18 @@ class Trainer:
             if ep == 0:
                 price_series = ep_prices
                 action_series = ep_actions
+
+        if not episode_rewards:
+            return {
+                "sharpe": 0.0,
+                "final_balance": self.env.initial_balance,
+                "pnl": 0.0,
+                "initial_balance": self.env.initial_balance,
+                "win_rate": 0.0,
+                "action_counts": action_counts,
+                "price_series": price_series,
+                "action_series": action_series,
+            }
 
         rewards = np.array(episode_rewards, dtype=np.float32)
         std = np.std(rewards)
@@ -140,6 +181,30 @@ class Trainer:
         if self.update_queue is not None:
             self.update_queue.put(payload)
 
+    def _notify_step(self, generation: int, action, reward: float, info: dict) -> None:
+        self._stream_step += 1
+        balance = float(info.get("balance", self.env.initial_balance))
+        self._equity_curve.append(balance)
+        if len(self._equity_curve) > 200:
+            self._equity_curve = self._equity_curve[-200:]
+
+        action_array = np.asarray(action)
+        direction = int(action_array[0]) if action_array.ndim > 0 else int(action_array)
+        price = float(info.get("price", info.get("next_price", balance)))
+        self._notify({
+            "kind": "step_batch",
+            "step": self._stream_step,
+            "generation": generation,
+            "price": price,
+            "last_action": direction,
+            "position": float(info.get("position", 0.0)),
+            "balance": balance,
+            "pnl": balance - float(self.env.initial_balance),
+            "rolling_reward": float(reward),
+            "steps_per_second": 0.0,
+            "equity_curve": list(self._equity_curve),
+        })
+
     def stop(self) -> None:
         self._stop = True
 
@@ -158,7 +223,12 @@ class Trainer:
             )
 
         best_path = self.checkpoint_dir / "best.zip"
-        if self.resume and best_path.exists():
+        if self.resume_from is not None:
+            if not self.resume_from.exists():
+                raise FileNotFoundError(f"checkpoint not found: {self.resume_from}")
+            logger.info(f"Resuming from explicit checkpoint: {self.resume_from}")
+            self._model = PPO.load(str(self.resume_from), env=self.env)
+        elif self.resume and best_path.exists():
             logger.info(f"Resuming from checkpoint: {best_path}")
             self._model = PPO.load(str(best_path), env=self.env)
         else:
@@ -173,7 +243,11 @@ class Trainer:
                 break
 
             logger.info(f"Generation {generation + 1}/{self.total_generations}")
-            self._model.learn(total_timesteps=self.n_steps, reset_num_timesteps=False)
+            self._model.learn(
+                total_timesteps=self.n_steps,
+                reset_num_timesteps=False,
+                callback=TrainingStreamCallback(self, generation + 1),
+            )
 
             eval_result = self._evaluate(self._model)
             current_sharpe = eval_result["sharpe"]

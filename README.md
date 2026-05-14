@@ -45,14 +45,15 @@ Active development. Latest run (2026-05-14):
 1. **Data Layer** — mengambil candle OHLCV dari exchange (Binance, OKX, Bybit) via CCXT, dinormalisasi menjadi rolling window.
 2. **Environment** — custom Gymnasium env. Agent mengamati 60 candle × 7 channel dan memilih arah + ukuran posisi. Reward adalah Sharpe ratio + sinyal harga langsung, dikurangi transaction cost.
 3. **Self-Play Training** — PPO (Stable-Baselines3) berlatih lintas generasi. Jika Sharpe agent saat ini melampaui best Sharpe sebesar `promote_threshold`, agent dipromosikan dan disimpan sebagai `best.zip`.
-4. **TUI Monitor** — terminal dashboard real-time (Textual + Rich) menampilkan Sharpe chart, price chart, distribusi aksi, balance, PnL, dan win rate.
+4. **Web Platform** — backend FastAPI + frontend React (Vite) sebagai pondasi monitoring dan kontrol training berbasis browser.
 
 ---
 
 ## Architecture
 
 ```
-main.py                 ← entry point & orchestrator
+main.py                 ← web backend entry point (Uvicorn launcher)
+├── backend/app.py      ← FastAPI app + health endpoint
 ├── logger.py           ← shared logger (Loguru)
 ├── data/fetcher.py     ← CCXT data pipeline + normalisasi
 ├── env/crypto_env.py   ← Gymnasium environment
@@ -60,10 +61,8 @@ main.py                 ← entry point & orchestrator
 │     action:      MultiDiscrete([3, 4])  — direction × size
 ├── agent/trainer.py    ← PPO self-play loop
 │     _evaluate()       — win_rate, action_counts, price_series
-│     _notify()         → update_queue → TUI
-├── tui/app.py          ← real-time TUI dashboard
-│     ChartArea         — Sharpe (40%) | Price (40%) | Action (20%)
-│     MetricsBar        — Generation | Sharpe | Balance | PnL | WinRate | ...
+│     _notify()         → queue / streaming sink (next phase)
+├── apps/web/           ← React + Vite + TypeScript frontend skeleton
 └── run_best.py         ← inference runner + compat check
 ```
 
@@ -75,7 +74,8 @@ main.py                 ← entry point & orchestrator
 |----------|-----------|
 | RL / ML | PyTorch, Stable-Baselines3, Gymnasium |
 | Data | CCXT, Pandas, NumPy |
-| TUI | Textual, Rich, plotext |
+| Backend API | FastAPI, Uvicorn, Pydantic |
+| Frontend | React, Vite, TypeScript |
 | Testing | Pytest, pytest-cov, pytest-mock, Hypothesis |
 | Tooling | Weights & Biases, python-dotenv, Loguru |
 
@@ -91,8 +91,18 @@ uv sync
 cp config.yaml.example config.yaml
 # Edit config.yaml — set exchange, symbol, hyperparameters
 
-# Run training with TUI
+# Run web backend
 uv run python main.py
+
+# Run frontend
+cd apps/web && npm install
+cd apps/web && npm run dev
+
+# Run backend + frontend together
+make dev
+
+# Run TUI (secondary interface)
+make tui
 
 # Run best checkpoint (inference)
 uv run python run_best.py
@@ -115,17 +125,18 @@ All settings live in `config.yaml`:
 
 ---
 
-## TUI Dashboard
+## Web Platform (Current Slice)
 
-Terminal dashboard update real-time setiap generasi:
+Bootstrap web stack fase awal:
 
-- **Metrics bar** — Generation, Progress %, Sharpe, Best Sharpe, Balance, PnL, Win Rate, Promotions, Status
-- **Sharpe Panel** — sparkline Sharpe ratio lintas generasi (hijau = positif, merah = negatif)
-- **Price Panel** — line chart harga episode terakhir + marker BUY ▲ / SELL ▼
-- **Action Panel** — distribusi BUY/HOLD/SELL, last action, cumulative trades
-- **Log** — log per-generasi dengan Sharpe, PnL, dan win rate
-
-Tekan `q` untuk keluar.
+- Backend FastAPI jalan di `http://localhost:8000`
+- Health check: `GET /healthz` mengembalikan `{"status":"ok"}`
+- Frontend Vite jalan di `http://localhost:5173`
+- Mode concurrent lokal: `make dev`
+- Persistence lokal: SQLite `data/tradingzero.db` (migrate via `make db-migrate`)
+- Retention otomatis: prune run/event/error lebih lama dari 90 hari saat `POST /runs/start`
+- Web UI adalah interface utama untuk start/stop/retry + observability.
+- TUI tetap dipertahankan sebagai interface sekunder untuk workflow terminal-first (`apps/tui`).
 
 ---
 
@@ -134,12 +145,34 @@ Tekan `q` untuk keluar.
 ```bash
 uv run pytest tests/unit/ -v
 uv run pytest tests/integration/ -v
+cd apps/web && npm test
+cd apps/web && npm run e2e:smoke
 ```
 
 Test layers:
-- **Unit** (`tests/unit/`) — isolated tests untuk TUI components, env, data pipeline, trainer, run_best
+- **Unit** (`tests/unit/`) — isolated tests untuk web entrypoint, health endpoint, env, data pipeline, trainer, run_best
 - **Property-based** — Hypothesis tests untuk edge case environment (reward finite, obs in range)
 - **Integration** (`tests/integration/`) — end-to-end short training loops
+
+### E2E tags (Playwright)
+
+- `@smoke` wajib untuk jalur cepat CI: open app -> start run -> stream connected -> stop run.
+- `@debug` opsional untuk investigasi lokal.
+- Artifact saat gagal: screenshot, trace, dan browser console log.
+
+Command:
+
+```bash
+cd apps/web && npm run e2e:smoke
+cd apps/web && npm run e2e:debug
+```
+
+### Migration Closure Notes (v0.2.1)
+
+- Web app menjadi canonical UX (web-first).
+- TUI dipertahankan sebagai secondary UX, runnable via `make tui`.
+- Full gate migrasi dirangkum di `make test-migration-gate` (backend unit+integration, frontend component test, dan e2e smoke).
+- Checkpoint compatibility (`best.zip`, `gen_*.zip`) + retry flow tetap dijaga.
 
 ---
 
@@ -148,7 +181,7 @@ Test layers:
 - [x] Data layer — fetch, normalize, dan cache OHLCV data
 - [x] Environment — Gymnasium env dengan Sharpe-based reward + price return signal
 - [x] Self-play loop — multi-generation PPO dengan checkpoint promotion
-- [x] TUI dashboard — real-time metrics, sparkline chart, PnL tracking
+- [x] Web bootstrap — FastAPI backend + React Vite frontend skeleton
 - [x] MultiDiscrete action space — partial position sizing (25%/50%/75%/100%)
 - [x] Expanded observation — position + unrealized PnL channels
 - [x] Win rate tracking — per-generation dan cumulative trade counts

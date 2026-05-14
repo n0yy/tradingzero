@@ -115,6 +115,8 @@ class CryptoEnv(gym.Env):
             "position": self._position,
             "step": self._current_step,
             "cost": cost,
+            "price": current_price,
+            "next_price": next_price,
         }
         return obs, reward, terminated, truncated, info
 
