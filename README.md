@@ -88,7 +88,6 @@ main.py                 ← web backend entry point (Uvicorn launcher)
 uv sync
 
 # Configure
-cp config.yaml.example config.yaml
 # Edit config.yaml — set exchange, symbol, hyperparameters
 
 # Run web backend

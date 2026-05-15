@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup config backend backend-dev frontend frontend-build tui dev dev-fake db-migrate db-revision train resume run test test-unit test-issue-25 test-migration-gate lint clean checkpoints
+.PHONY: help setup backend backend-dev frontend frontend-build tui dev dev-fake db-migrate db-revision run test test-unit test-migration-gate lint clean checkpoints
 
 help:
 	@echo ""
@@ -8,7 +8,6 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    make setup       Install dependencies via uv"
-	@echo "    make config      Copy config.yaml.example -> config.yaml"
 	@echo ""
 	@echo "  Run"
 	@echo "    make backend     Start web backend (FastAPI)"
@@ -20,8 +19,6 @@ help:
 	@echo "    make frontend-build Build frontend production assets"
 	@echo "    make db-migrate  Apply Alembic migrations"
 	@echo "    make db-revision MSG='add table'  Create new Alembic revision"
-	@echo "    make train       Alias to backend (web cutover)"
-	@echo "    make resume      Alias to backend (web cutover)"
 	@echo "    make run         Run best checkpoint inference"
 	@echo "    make run CHECKPOINT=agent/checkpoints/gen_0200.zip"
 	@echo ""
@@ -36,14 +33,6 @@ help:
 
 setup:
 	uv sync
-
-config:
-	@if [ -f config.yaml ]; then \
-		echo "config.yaml already exists — skipping. Delete it first to reset."; \
-	else \
-		cp config.yaml.example config.yaml; \
-		echo "config.yaml created. Edit it before running."; \
-	fi
 
 backend:
 	uv run python main.py
@@ -78,12 +67,6 @@ db-migrate:
 db-revision:
 	@test -n "$(MSG)" || (echo "MSG is required. Example: make db-revision MSG='add runs table'" && exit 1)
 	uv run alembic revision --autogenerate -m "$(MSG)"
-
-train:
-	uv run python main.py
-
-resume:
-	uv run python main.py
 
 CHECKPOINT ?= agent/checkpoints/best.zip
 run:
