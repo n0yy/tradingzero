@@ -177,17 +177,30 @@ cd apps/web && npm run e2e:debug
 
 ## Milestones
 
+### Completed foundation
+
 - [x] Data layer — fetch, normalize, dan cache OHLCV data
-- [x] Environment — Gymnasium env dengan Sharpe-based reward + price return signal
-- [x] Self-play loop — multi-generation PPO dengan checkpoint promotion
-- [x] Web bootstrap — FastAPI backend + React Vite frontend skeleton
-- [x] MultiDiscrete action space — partial position sizing (25%/50%/75%/100%)
-- [x] Expanded observation — position + unrealized PnL channels
-- [x] Win rate tracking — per-generation dan cumulative trade counts
-- [x] 3-column chart area — Sharpe | Price | Action distribution
-- [ ] Multi-asset support
-- [ ] Backtesting module
-- [ ] Strategy export
+- [x] Environment — Gymnasium env dengan partial position sizing + transaction cost
+- [x] Self-play PPO loop — multi-generation training dengan checkpoint promotion
+- [x] Web-first control plane — backend FastAPI + dashboard React untuk start/stop/retry
+- [x] Live observability — price stream, executed-trade markers, cumulative BUY/SELL, trade win rate
+- [x] Battle mode — jalankan `best.zip` secara deterministic dari dashboard atau `run_best.py`
+- [x] Persistence baseline — run history, event/error retention, dan config revision storage
+
+### Next improvements
+
+- [ ] Milestone 1 — Measurement hardening
+  Lock evaluasi supaya lebih trustworthy: deterministic eval pass, richer executed-trade ledger, dan replay/history yang konsisten antara env, trainer, backend, dan FE.
+- [ ] Milestone 2 — Agent quality pass
+  Audit reward design, overtrading tendency, action constraints, dan hyperparameter defaults supaya policy belajar perilaku trading yang lebih masuk akal.
+- [ ] Milestone 3 — Research workflow
+  Tambahkan run comparison, checkpoint lineage, experiment presets, dan benchmark vs baseline sederhana seperti buy-and-hold.
+- [ ] Milestone 4 — Backtesting and analysis
+  Sediakan backtest/reporting yang bisa memutar checkpoint pada data historis dengan equity curve, drawdown, dan trade breakdown yang jelas.
+- [ ] Milestone 5 — Deployment-grade execution
+  Siapkan paper trading / forward testing, guardrails risk management, dan export strategy artifacts untuk evaluasi di luar loop training.
+- [ ] Milestone 6 — Scale-out
+  Perluas ke multi-asset, multi-timeframe, dan training orchestration yang lebih besar jika loop single-symbol sudah stabil.
 
 ---
 
