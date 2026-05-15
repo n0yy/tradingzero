@@ -6,8 +6,8 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class LastAction(BaseModel):
-    action: Literal['BUY', 'SELL', 'HOLD']
+class ExecutedTrade(BaseModel):
+    action: Literal['BUY', 'SELL']
     timestamp: str
     execution_price: float
     size_percent: float
@@ -17,6 +17,7 @@ class LastAction(BaseModel):
     balance_before: float
     balance_after: float
     fee: float
+    realized_pnl: float
     unrealized_pnl_after: float
 
 
@@ -26,12 +27,15 @@ class TrainingUpdateData(BaseModel):
     best_sharpe: float
     balance: float
     pnl: float
-    win_rate: float
+    trade_win_rate: float
     progress: float
-    action_distribution: dict[str, int]
+    transaction_distribution: dict[str, int]
     cumulative_buys: int
     cumulative_sells: int
-    last_action: LastAction
+    winning_trades: int
+    losing_trades: int
+    flat_trades: int
+    last_transaction: ExecutedTrade | None
 
 
 class TrainingUpdateEvent(BaseModel):
@@ -43,13 +47,28 @@ class StepBatchData(BaseModel):
     step: int
     generation: int
     price: float
-    last_action: Literal['BUY', 'SELL', 'HOLD']
+    requested_direction: Literal['BUY', 'SELL', 'HOLD']
+    requested_size_percent: float
+    transaction_outcome: Literal['BUY', 'SELL', 'NO_TRANSACTION']
+    is_transaction: bool
+    position_before: float
+    position_after: float
+    executed_delta: float
     position: float
     balance: float
     pnl: float
     rolling_reward: float
     steps_per_second: float
     equity_curve: list[float]
+    cost: float
+    cumulative_buys: int
+    cumulative_sells: int
+    transaction_distribution: dict[str, int]
+    trade_win_rate: float
+    winning_trades: int
+    losing_trades: int
+    flat_trades: int
+    executed_trade: ExecutedTrade | None
     timestamp: str
 
 
@@ -58,27 +77,34 @@ class StepBatchEvent(BaseModel):
     data: StepBatchData
 
 
-def _map_last_action(payload: dict) -> LastAction:
-    actions = payload.get('action_series') or []
-    prices = payload.get('price_series') or []
-    action_int = int(actions[-1]) if actions else 0
-    action = 'HOLD' if action_int == 0 else 'BUY' if action_int == 1 else 'SELL'
-    execution_price = float(prices[-1]) if prices else float(payload.get('final_balance', 0.0))
-    balance_after = float(payload.get('final_balance', 0.0))
-    balance_before = float(payload.get('initial_balance', balance_after))
+def _transaction_distribution(payload: dict) -> dict[str, int]:
+    counts = payload.get('transaction_distribution') or payload.get('action_counts') or {}
+    return {
+        'buy': int(counts.get('buy', 0)),
+        'sell': int(counts.get('sell', 0)),
+        'no_transaction': int(counts.get('no_transaction', counts.get('hold', 0))),
+    }
 
-    return LastAction(
+
+def _executed_trade(payload: dict | None) -> ExecutedTrade | None:
+    if not payload:
+        return None
+    action = payload.get('action')
+    if action not in {'BUY', 'SELL'}:
+        return None
+    return ExecutedTrade(
         action=action,
-        timestamp=datetime.now(UTC).isoformat(),
-        execution_price=execution_price,
-        size_percent=0.0,
-        position_before=0.0,
-        position_after=0.0,
-        notional_usd=0.0,
-        balance_before=balance_before,
-        balance_after=balance_after,
-        fee=0.0,
-        unrealized_pnl_after=float(payload.get('pnl', 0.0)),
+        timestamp=payload.get('timestamp') or datetime.now(UTC).isoformat(),
+        execution_price=float(payload.get('execution_price', 0.0)),
+        size_percent=float(payload.get('size_percent', 0.0)),
+        position_before=float(payload.get('position_before', 0.0)),
+        position_after=float(payload.get('position_after', 0.0)),
+        notional_usd=float(payload.get('notional_usd', 0.0)),
+        balance_before=float(payload.get('balance_before', 0.0)),
+        balance_after=float(payload.get('balance_after', 0.0)),
+        fee=float(payload.get('fee', 0.0)),
+        realized_pnl=float(payload.get('realized_pnl', 0.0)),
+        unrealized_pnl_after=float(payload.get('unrealized_pnl_after', 0.0)),
     )
 
 
@@ -93,43 +119,74 @@ def map_training_payload(payload: dict) -> dict:
             best_sharpe=float(payload.get('best_sharpe', 0.0)),
             balance=float(payload.get('final_balance', 0.0)),
             pnl=float(payload.get('pnl', 0.0)),
-            win_rate=float(payload.get('win_rate', 0.0)),
+            trade_win_rate=float(payload.get('trade_win_rate', payload.get('win_rate', 0.0))),
             progress=min(max(generation / total_generations, 0.0), 1.0),
-            action_distribution={
-                'buy': int((payload.get('action_counts') or {}).get('buy', 0)),
-                'hold': int((payload.get('action_counts') or {}).get('hold', 0)),
-                'sell': int((payload.get('action_counts') or {}).get('sell', 0)),
-            },
+            transaction_distribution=_transaction_distribution(payload),
             cumulative_buys=int(payload.get('cumulative_buys', 0)),
             cumulative_sells=int(payload.get('cumulative_sells', 0)),
-            last_action=_map_last_action(payload),
+            winning_trades=int(payload.get('winning_trades', 0)),
+            losing_trades=int(payload.get('losing_trades', 0)),
+            flat_trades=int(payload.get('flat_trades', 0)),
+            last_transaction=_executed_trade(payload.get('last_transaction')),
         ),
     )
     return event.model_dump()
 
 
-def _action_label(value: int) -> Literal['BUY', 'SELL', 'HOLD']:
-    if value == 1:
+def _requested_direction(payload: dict) -> Literal['BUY', 'SELL', 'HOLD']:
+    value = payload.get('requested_direction')
+    if value in {'BUY', 'SELL', 'HOLD'}:
+        return value
+    legacy = int(payload.get('last_action', 0))
+    if legacy == 1:
         return 'BUY'
-    if value == 2:
+    if legacy == 2:
         return 'SELL'
     return 'HOLD'
 
 
+def _transaction_outcome(payload: dict) -> Literal['BUY', 'SELL', 'NO_TRANSACTION']:
+    value = payload.get('transaction_outcome')
+    if value in {'BUY', 'SELL', 'NO_TRANSACTION'}:
+        return value
+    executed_delta = float(payload.get('executed_delta', 0.0))
+    if executed_delta > 0:
+        return 'BUY'
+    if executed_delta < 0:
+        return 'SELL'
+    return 'NO_TRANSACTION'
+
+
 def map_step_batch_payload(payload: dict) -> dict:
+    transaction_outcome = _transaction_outcome(payload)
     event = StepBatchEvent(
         type='step_batch',
         data=StepBatchData(
             step=int(payload.get('step', 0)),
             generation=int(payload.get('generation', 0)),
             price=float(payload.get('price', 0.0)),
-            last_action=_action_label(int(payload.get('last_action', 0))),
-            position=float(payload.get('position', 0.0)),
+            requested_direction=_requested_direction(payload),
+            requested_size_percent=float(payload.get('requested_size_percent', 0.0)),
+            transaction_outcome=transaction_outcome,
+            is_transaction=bool(payload.get('is_transaction', transaction_outcome != 'NO_TRANSACTION')),
+            position_before=float(payload.get('position_before', 0.0)),
+            position_after=float(payload.get('position_after', payload.get('position', 0.0))),
+            executed_delta=float(payload.get('executed_delta', 0.0)),
+            position=float(payload.get('position_after', payload.get('position', 0.0))),
             balance=float(payload.get('balance', 0.0)),
             pnl=float(payload.get('pnl', 0.0)),
             rolling_reward=float(payload.get('rolling_reward', 0.0)),
             steps_per_second=float(payload.get('steps_per_second', 0.0)),
             equity_curve=[float(x) for x in (payload.get('equity_curve') or [])],
+            cost=float(payload.get('cost', 0.0)),
+            cumulative_buys=int(payload.get('cumulative_buys', 0)),
+            cumulative_sells=int(payload.get('cumulative_sells', 0)),
+            transaction_distribution=_transaction_distribution(payload),
+            trade_win_rate=float(payload.get('trade_win_rate', 0.0)),
+            winning_trades=int(payload.get('winning_trades', 0)),
+            losing_trades=int(payload.get('losing_trades', 0)),
+            flat_trades=int(payload.get('flat_trades', 0)),
+            executed_trade=_executed_trade(payload.get('executed_trade')),
             timestamp=payload.get('timestamp') or datetime.now(UTC).isoformat(),
         ),
     )

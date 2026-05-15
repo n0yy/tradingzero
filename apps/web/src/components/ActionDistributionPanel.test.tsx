@@ -10,22 +10,26 @@ const fakeEvent = (overrides: Partial<TrainingUpdate> = {}): TrainingUpdate => (
   best_sharpe: 0,
   balance: 10000,
   pnl: 0,
-  win_rate: 0.5,
+  trade_win_rate: 0.5,
   progress: 0.1,
-  action_distribution: { buy: 4, hold: 6, sell: 2 },
+  transaction_distribution: { buy: 4, sell: 2, no_transaction: 6 },
   cumulative_buys: 40,
   cumulative_sells: 25,
-  last_action: {
+  winning_trades: 1,
+  losing_trades: 1,
+  flat_trades: 0,
+  last_transaction: {
     action: 'BUY',
     timestamp: '2026-05-14T00:00:00Z',
     execution_price: 100,
-    size_percent: 50,
+    size_percent: 0.5,
     position_before: 0,
     position_after: 0.5,
     notional_usd: 50,
     balance_before: 10000,
     balance_after: 9950,
     fee: 0.05,
+    realized_pnl: 0,
     unrealized_pnl_after: 0,
   },
   ...overrides,
@@ -34,7 +38,7 @@ const fakeEvent = (overrides: Partial<TrainingUpdate> = {}): TrainingUpdate => (
 describe('ActionDistributionPanel', () => {
   it('renders the panel heading', () => {
     render(<ActionDistributionPanel event={null} />)
-    expect(screen.getByRole('heading', { name: /action distribution/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /transaction distribution/i })).toBeInTheDocument()
   })
 
   it('shows placeholder when event is null', () => {
@@ -43,10 +47,10 @@ describe('ActionDistributionPanel', () => {
     expect(screen.queryByTestId('distribution-buy')).not.toBeInTheDocument()
   })
 
-  it('renders BUY/HOLD/SELL counts when event is present', () => {
+  it('renders BUY/NO TRANSACTION/SELL counts when event is present', () => {
     render(<ActionDistributionPanel event={fakeEvent()} />)
     expect(screen.getByTestId('distribution-buy')).toHaveTextContent('4')
-    expect(screen.getByTestId('distribution-hold')).toHaveTextContent('6')
+    expect(screen.getByTestId('distribution-no-transaction')).toHaveTextContent('6')
     expect(screen.getByTestId('distribution-sell')).toHaveTextContent('2')
   })
 

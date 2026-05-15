@@ -1,0 +1,3 @@
+# Live dashboard uses executed trades as the portfolio truth
+
+The live dashboard previously treated policy-requested BUY/SELL directions as if they were real portfolio transactions, which made charts, cumulative counters, and win-rate-style KPIs misleading when a requested action could not change position. We decided that live transaction surfaces are portfolio-centric: `Executed Trade` is computed in `env.step()`, chart price lines remain per-Step, trade markers appear only for Steps with a non-zero executed delta, `Last Transaction` stays sticky to the last real trade, generation summaries carry executed-transaction snapshots so the frontend can rehydrate correctly after refresh, and `Trade Win Rate` is derived only from realized PnL on SELL-side executed trades.

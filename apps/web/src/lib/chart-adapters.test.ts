@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   fromPriceBuffer,
-  toEchartsOptions,
+  toProfitLossOptions,
   toPriceChartData,
   toPriceSeries,
   toTradeMarkers,
@@ -16,22 +16,26 @@ const fakeUpdate = (overrides: Partial<TrainingUpdate> = {}): TrainingUpdate => 
   best_sharpe: 0.2,
   balance: 10000,
   pnl: 0,
-  win_rate: 0.5,
+  trade_win_rate: 0.5,
   progress: 0.1,
-  action_distribution: { buy: 0, hold: 0, sell: 0 },
+  transaction_distribution: { buy: 0, sell: 0, no_transaction: 0 },
   cumulative_buys: 0,
   cumulative_sells: 0,
-  last_action: {
-    action: 'HOLD',
+  winning_trades: 0,
+  losing_trades: 0,
+  flat_trades: 0,
+  last_transaction: {
+    action: 'BUY',
     timestamp: '2026-05-14T00:00:00Z',
     execution_price: 100,
-    size_percent: 0,
+    size_percent: 0.25,
     position_before: 0,
-    position_after: 0,
-    notional_usd: 0,
+    position_after: 0.25,
+    notional_usd: 2500,
     balance_before: 10000,
     balance_after: 10000,
     fee: 0,
+    realized_pnl: 0,
     unrealized_pnl_after: 0,
   },
   ...overrides,
@@ -53,11 +57,8 @@ describe('chart adapters', () => {
   })
 
   it('creates echarts option for analytics', () => {
-    const option = toEchartsOptions([
-      { generation: 1, sharpe: 0.4, pnl: 20 },
-      { generation: 2, sharpe: 0.8, pnl: 55 },
-    ])
-    expect(option.series).toHaveLength(2)
+    const option = toProfitLossOptions({ profit: 12, loss: 5, flat: 3 })
+    expect(option.series).toHaveLength(1)
   })
 })
 
@@ -68,27 +69,26 @@ describe('toPriceChartData', () => {
     expect(result.markers).toHaveLength(0)
   })
 
-  it('extracts a single price point from a HOLD last_action', () => {
-    const result = toPriceChartData(fakeUpdate({ last_action: { ...fakeUpdate().last_action, action: 'HOLD', execution_price: 100 } }))
+  it('extracts a single price point from the last transaction', () => {
+    const result = toPriceChartData(fakeUpdate({ last_transaction: { ...fakeUpdate().last_transaction!, action: 'BUY', execution_price: 100 } }))
     expect(result.series).toHaveLength(1)
     expect(result.series[0].value).toBe(100)
-    expect(result.markers).toHaveLength(0)
   })
 
-  it('emits a BUY marker when last_action is BUY', () => {
+  it('emits a BUY marker when last_transaction is BUY', () => {
     const result = toPriceChartData(
       fakeUpdate({
-        last_action: { ...fakeUpdate().last_action, action: 'BUY', execution_price: 105 },
+        last_transaction: { ...fakeUpdate().last_transaction!, action: 'BUY', execution_price: 105 },
       }),
     )
     expect(result.markers).toHaveLength(1)
     expect(result.markers[0].text).toContain('BUY')
   })
 
-  it('emits a SELL marker when last_action is SELL', () => {
+  it('emits a SELL marker when last_transaction is SELL', () => {
     const result = toPriceChartData(
       fakeUpdate({
-        last_action: { ...fakeUpdate().last_action, action: 'SELL', execution_price: 99 },
+        last_transaction: { ...fakeUpdate().last_transaction!, action: 'SELL', execution_price: 99 },
       }),
     )
     expect(result.markers).toHaveLength(1)
@@ -103,9 +103,9 @@ describe('fromPriceBuffer', () => {
 
   it('maps each buffer point to a price series point', () => {
     const result = fromPriceBuffer([
-      { time: 1, value: 30000, action: 'HOLD' },
+      { time: 1, value: 30000, action: 'NO_TRANSACTION' },
       { time: 2, value: 30050, action: 'BUY' },
-      { time: 3, value: 30025, action: 'HOLD' },
+      { time: 3, value: 30025, action: 'NO_TRANSACTION' },
     ])
     expect(result.series).toHaveLength(3)
     expect(result.series[0].value).toBe(30000)
@@ -115,7 +115,7 @@ describe('fromPriceBuffer', () => {
   it('emits markers for BUY and SELL actions only', () => {
     const result = fromPriceBuffer([
       { time: 1, value: 30000, action: 'BUY' },
-      { time: 2, value: 30050, action: 'HOLD' },
+      { time: 2, value: 30050, action: 'NO_TRANSACTION' },
       { time: 3, value: 29900, action: 'SELL' },
     ])
     expect(result.markers).toHaveLength(2)
@@ -123,4 +123,3 @@ describe('fromPriceBuffer', () => {
     expect(result.markers[1].text).toContain('SELL')
   })
 })
-

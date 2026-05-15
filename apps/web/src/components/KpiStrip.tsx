@@ -29,7 +29,7 @@ export function KpiStrip({ event, stepBatch }: { event: TrainingUpdate | null; s
   const bestSharpe = event?.best_sharpe ?? null
   const balance = stepBatch?.balance ?? event?.balance ?? null
   const pnl = stepBatch?.pnl ?? event?.pnl ?? null
-  const winRate = event?.win_rate ?? null
+  const tradeWinRate = stepBatch?.trade_win_rate ?? event?.trade_win_rate ?? null
   const progress = event?.progress ?? null
 
   const pnlSign: KpiCellProps['sign'] = pnl === null ? null : pnl >= 0 ? 'gain' : 'loss'
@@ -40,7 +40,7 @@ export function KpiStrip({ event, stepBatch }: { event: TrainingUpdate | null; s
       <KpiCell label="Best Sharpe" testId="kpi-best-sharpe" value={formatSharpe(bestSharpe)} />
       <KpiCell label="Balance" testId="kpi-balance" value={formatUsd(balance)} />
       <KpiCell label="PnL" testId="kpi-pnl" value={formatSignedUsd(pnl)} sign={pnlSign} />
-      <KpiCell label="Win Rate" testId="kpi-win-rate" value={formatPercent(winRate)} />
+      <KpiCell label="Trade Win Rate" testId="kpi-trade-win-rate" value={formatPercent(tradeWinRate)} />
       <KpiCell label="Progress" testId="kpi-progress" value={formatPercent(progress)} />
     </section>
   )

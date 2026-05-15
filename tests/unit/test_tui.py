@@ -165,7 +165,7 @@ def test_chart_panel_flat_nonzero_does_not_raise():
             panel.add_point(2.5)
 
 
-# --- Issue #11: Win Rate tile ---
+# --- Issue #11: Trade Win Rate tile ---
 
 def test_metrics_bar_has_winrate_tile():
     from apps.tui.app import MetricsBar
@@ -196,7 +196,7 @@ def test_handle_update_sets_winrate_green_when_above_50(mocker):
         captured["style"] = style
     mocker.patch.object(tile, "set_value", side_effect=fake_set_value)
     mocker.patch.object(app, "query_one", return_value=tile)
-    app._update_winrate_tile(tile, 0.8)
+    app._update_trade_winrate_tile(tile, 0.8)
     assert captured["value"] == "80%"
     assert "green" in captured["style"]
 
@@ -212,7 +212,7 @@ def test_handle_update_sets_winrate_red_when_below_50(mocker):
         captured["value"] = value
         captured["style"] = style
     mocker.patch.object(tile, "set_value", side_effect=fake_set_value)
-    app._update_winrate_tile(tile, 0.3)
+    app._update_trade_winrate_tile(tile, 0.3)
     assert captured["value"] == "30%"
     assert "red" in captured["style"]
 
@@ -230,11 +230,11 @@ def test_winrate_tile_shows_placeholder_before_payload():
         captured["label"] = label
         captured["value"] = value
     real_tile.set_value = fake_set_value
-    real_tile.set_value("Win Rate", "—")
+    real_tile.set_value("Trade Win Rate", "—")
     assert captured["value"] == "—"
 
 
-def test_log_line_includes_win_rate(mocker):
+def test_log_line_includes_trade_win_rate(mocker):
     from apps.tui.app import TUIApp, MetricBox, RichLog
     from queue import Queue
     app = TUIApp(update_queue=Queue())
@@ -256,12 +256,12 @@ def test_log_line_includes_win_rate(mocker):
         "final_balance": 10000.0,
         "pnl": 0.0,
         "initial_balance": 10000.0,
-        "win_rate": 0.75,
+        "trade_win_rate": 0.75,
         "action_counts": {"buy": 5, "hold": 40, "sell": 5},
         "cumulative_buys": 5,
         "cumulative_sells": 5,
     })
-    assert any("win=75%" in msg for msg in log_messages)
+    assert any("trade_win=75%" in msg for msg in log_messages)
 
 
 # --- Issue #12: ActionPanel + ChartArea ---

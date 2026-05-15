@@ -24,14 +24,14 @@ test('live view golden path @smoke', async ({ page }) => {
   await expect(page.getByText('TradingZero Dashboard')).toBeVisible()
   await expect(page.getByRole('navigation', { name: /primary/i })).toBeVisible()
   await expect(page.getByTestId('live-view-state')).toBeVisible()
-  await expect(page.getByTestId('last-action-empty')).toBeVisible()
+  await expect(page.getByTestId('last-transaction-empty')).toBeVisible()
   await expect(page.getByTestId('chart-state-helper')).toBeVisible()
 
   await expect(page.getByTestId('start-run')).toBeVisible()
   await page.getByTestId('start-run').click()
   await expect(page.getByTestId('live-view-state')).toHaveText(/waiting|running/i, { timeout: 20_000 })
   await expect(page.getByTestId('price-chart')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByTestId('last-action-direction')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByTestId('last-transaction-direction')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('kpi-balance')).not.toHaveText('—', { timeout: 20_000 })
   await expect(page.getByTestId('kpi-pnl')).not.toHaveText('—', { timeout: 20_000 })
 
@@ -44,7 +44,13 @@ test('live view golden path @smoke', async ({ page }) => {
   await expect(page.getByTestId('live-view-state')).toHaveText(/stopping|done|idle/i, { timeout: 20_000 })
 })
 
-test('routes mount Live View, Config, Runs, Errors @smoke', async ({ page }) => {
+test('routes mount Live View, Battle, Config, Runs, Errors @smoke', async ({ page }) => {
+  await page.goto('/battle')
+  await expect(page.getByRole('button', { name: /run best agent/i })).toBeVisible()
+  await page.getByRole('button', { name: /run best agent/i }).click()
+  await expect(page.getByTestId('battle-final-balance')).not.toHaveText('—', { timeout: 20_000 })
+  await expect(page.getByTestId('battle-summary-line')).toBeVisible({ timeout: 20_000 })
+
   await page.goto('/config')
   await expect(page.getByRole('button', { name: /save revision/i })).toBeVisible()
   await expect(page.getByRole('group', { name: /^data$/i })).toBeVisible()

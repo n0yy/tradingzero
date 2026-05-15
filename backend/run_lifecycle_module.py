@@ -215,6 +215,14 @@ class RunLifecycleModule:
         latest = max(candidates, key=lambda p: p.stat().st_mtime)
         return str(latest)
 
+    def best_checkpoint_path(self) -> str | None:
+        payload = self._active_config_payload()
+        checkpoint_dir = Path(payload['self_play']['checkpoint_dir'])
+        best = checkpoint_dir / 'best.zip'
+        if not best.exists():
+            return None
+        return str(best)
+
     def retry(self) -> dict[str, str | None]:
         checkpoint = self.latest_checkpoint_path()
         if checkpoint is None:

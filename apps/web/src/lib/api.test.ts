@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchRunStatus, startRun, stopRun, retryRun, fetchRuns, fetchRunErrors, fetchActiveConfig, saveActiveConfig } from './api'
+import {
+  fetchRunStatus,
+  startRun,
+  stopRun,
+  retryRun,
+  fetchRuns,
+  fetchRunErrors,
+  fetchActiveConfig,
+  saveActiveConfig,
+  runBestBattle,
+} from './api'
 
 const okJson = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -78,8 +88,42 @@ describe('api client', () => {
     })
   })
 
+  it('runBestBattle POSTs /battle/best', async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        checkpoint: 'agent/checkpoints/best.zip',
+        symbol: 'BTC/USDT',
+        timeframe: '15m',
+        initial_balance: 10000,
+        final_balance: 10100,
+        pnl: 100,
+        pnl_pct: 0.01,
+        total_steps: 500,
+        total_trades: 12,
+        trade_win_rate: 0.6,
+        winning_trades: 3,
+        losing_trades: 2,
+        flat_trades: 0,
+        transaction_distribution: { buy: 10, sell: 5, no_transaction: 485 },
+        price_series: [100, 101],
+        equity_curve: [10000, 10100],
+        executed_trades: [],
+      }),
+    )
+    const out = await runBestBattle()
+    expect(fetchMock).toHaveBeenCalledWith('/battle/best', { method: 'POST' })
+    expect(out.trade_win_rate).toBe(0.6)
+  })
+
   it('throws when response is not ok', async () => {
     fetchMock.mockResolvedValueOnce(new Response('boom', { status: 500 }))
     await expect(fetchRunStatus()).rejects.toThrow()
+  })
+
+  it('surfaces backend error detail when response is not ok', async () => {
+    fetchMock.mockResolvedValueOnce(
+      okJson({ detail: { error: { message: 'best.zip not found' } } }, 404),
+    )
+    await expect(runBestBattle()).rejects.toThrow('run best battle failed: best.zip not found')
   })
 })

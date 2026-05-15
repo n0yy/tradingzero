@@ -62,8 +62,8 @@ def test_inmemory_runner_emits_training_updates_until_stopped():
     assert 'generation' in sample
     assert 'current_sharpe' in sample
     assert 'final_balance' in sample
-    assert 'action_counts' in sample
-    assert {'buy', 'hold', 'sell'} <= set(sample['action_counts'].keys())
+    assert 'transaction_distribution' in sample
+    assert {'buy', 'sell', 'no_transaction'} <= set(sample['transaction_distribution'].keys())
 
 
 def test_inmemory_runner_emits_step_batch_faster_than_generations():
@@ -90,7 +90,17 @@ def test_inmemory_runner_emits_step_batch_faster_than_generations():
     assert len(step_batches) > len(generation_updates)
     assert len(step_batches) >= 5
     sample = step_batches[0]
-    for key in ('step', 'price', 'last_action', 'position', 'balance', 'pnl', 'rolling_reward', 'steps_per_second', 'equity_curve'):
+    for key in (
+        'step',
+        'price',
+        'requested_direction',
+        'transaction_outcome',
+        'position',
+        'balance',
+        'pnl',
+        'rolling_reward',
+        'steps_per_second',
+        'equity_curve',
+    ):
         assert key in sample
-
 

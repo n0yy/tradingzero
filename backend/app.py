@@ -8,6 +8,7 @@ from queue import Empty
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
+from backend.battle_runtime import run_battle
 from backend.lifecycle import ActiveRunError, NoActiveRunError, RunController
 from backend.event_bus import TrainingEventBus
 from backend.event_mapper import map_step_batch_payload, map_training_payload
@@ -18,6 +19,7 @@ from backend.runners import InMemoryRunnerAdapter, TrainerRunnerAdapter
 from backend.runners import RunnerAdapter
 from backend.schemas import (
     ActiveConfigResponse,
+    BattleResultResponse,
     EventListResponse,
     HealthResponse,
     RunHistoryResponse,
@@ -153,6 +155,24 @@ def create_app(
     @app.put('/config/active', response_model=ActiveConfigResponse)
     def update_active_config(payload: SafeConfigPayload) -> dict[str, str | None]:
         return module.set_active_config(payload.model_dump())
+
+    @app.post('/battle/best', response_model=BattleResultResponse)
+    def run_best_battle() -> dict:
+        checkpoint = module.best_checkpoint_path()
+        if checkpoint is None:
+            raise HTTPException(
+                status_code=404,
+                detail={'error': {'code': 'checkpoint_not_found', 'message': 'best.zip not found'}},
+            )
+
+        config = module._active_config_payload()
+        try:
+            return run_battle(checkpoint=checkpoint, config=config)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={'error': {'code': 'checkpoint_incompatible', 'message': str(exc)}},
+            ) from exc
 
     @app.websocket('/ws/runs/stream')
     async def ws_runs_stream(websocket: WebSocket) -> None:

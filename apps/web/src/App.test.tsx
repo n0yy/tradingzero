@@ -7,18 +7,31 @@ import App from './App'
 import { formatUsd } from './lib/format'
 
 const streamMock = vi.hoisted(() => ({
-  current: { event: null as unknown, stepBatch: null as unknown, priceBuffer: [] as unknown, connected: true },
+  current: {
+    event: null as unknown,
+    stepBatch: null as unknown,
+    priceBuffer: [] as unknown,
+    profitLossDistribution: { profit: 0, loss: 0, flat: 0 } as unknown,
+    connected: true,
+  },
 }))
 
 vi.mock('./hooks/useTrainingStream', () => ({
   useTrainingStream: () => streamMock.current,
 }))
 
-function setStream(next: { event: unknown; connected: boolean; stepBatch?: unknown; priceBuffer?: unknown }) {
+function setStream(next: {
+  event: unknown
+  connected: boolean
+  stepBatch?: unknown
+  priceBuffer?: unknown
+  profitLossDistribution?: unknown
+}) {
   streamMock.current = {
     event: next.event,
     stepBatch: next.stepBatch ?? null,
     priceBuffer: next.priceBuffer ?? [],
+    profitLossDistribution: next.profitLossDistribution ?? { profit: 0, loss: 0, flat: 0 },
     connected: next.connected,
   }
 }
@@ -72,6 +85,30 @@ globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       { status: 200 },
     )
   }
+  if (url.endsWith('/battle/best')) {
+    return new Response(
+      JSON.stringify({
+        checkpoint: 'agent/checkpoints/best.zip',
+        symbol: 'BTC/USDT',
+        timeframe: '15m',
+        initial_balance: 10000,
+        final_balance: 10120,
+        pnl: 120,
+        pnl_pct: 0.012,
+        total_steps: 500,
+        total_trades: 8,
+        trade_win_rate: 0.75,
+        winning_trades: 3,
+        losing_trades: 1,
+        flat_trades: 0,
+        transaction_distribution: { buy: 5, sell: 4, no_transaction: 491 },
+        price_series: [100, 101],
+        equity_curve: [10000, 10120],
+        executed_trades: [],
+      }),
+      { status: 200 },
+    )
+  }
   return new Response('{}', { status: 200 })
 }) as typeof fetch
 
@@ -96,7 +133,7 @@ function renderApp(initialPath: string = '/') {
 
 describe('dashboard', () => {
   beforeEach(() => {
-    setStream({ event: null, connected: true })
+    setStream({ event: null, connected: true, profitLossDistribution: { profit: 0, loss: 0, flat: 0 } })
     setRunStatus({ state: 'idle', run_id: null, started_at: null, finished_at: null, error: null })
   })
 
@@ -122,6 +159,12 @@ describe('dashboard', () => {
     expect(screen.getByRole('link', { name: /^config$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^runs$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^errors$/i })).toBeInTheDocument()
+  })
+
+  it('renders Training and Battle tabs in the dashboard header', () => {
+    renderApp('/')
+    expect(screen.getByRole('tab', { name: /training/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /battle/i })).toBeInTheDocument()
   })
 
   it('marks Live View as the active nav target at /', () => {
@@ -177,6 +220,12 @@ describe('dashboard', () => {
     expect(await screen.findByRole('heading', { name: /error explorer/i })).toBeInTheDocument()
   })
 
+  it('renders Battle page on /battle', async () => {
+    renderApp('/battle')
+    expect(await screen.findByRole('button', { name: /run best agent/i })).toBeInTheDocument()
+    expect(screen.getByTestId('battle-checkpoint')).toHaveTextContent('best.zip')
+  })
+
   it('does not render Run History on Live View', () => {
     renderApp('/')
     expect(screen.queryByRole('heading', { name: /run history/i })).not.toBeInTheDocument()
@@ -216,22 +265,26 @@ describe('dashboard', () => {
         best_sharpe: 0.2,
         balance: 10000,
         pnl: 50,
-        win_rate: 0.6,
+        trade_win_rate: 0.6,
         progress: 0.3,
-        action_distribution: { buy: 1, hold: 2, sell: 0 },
+        transaction_distribution: { buy: 1, sell: 0, no_transaction: 2 },
         cumulative_buys: 1,
         cumulative_sells: 0,
-        last_action: {
+        winning_trades: 1,
+        losing_trades: 0,
+        flat_trades: 0,
+        last_transaction: {
           action: 'BUY',
           timestamp: '2026-05-14T00:00:00Z',
           execution_price: 100,
-          size_percent: 50,
+          size_percent: 0.5,
           position_before: 0,
           position_after: 0.5,
           notional_usd: 50,
           balance_before: 10000,
           balance_after: 9950,
           fee: 0.05,
+          realized_pnl: 0,
           unrealized_pnl_after: 0,
         },
       },

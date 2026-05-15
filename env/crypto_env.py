@@ -2,11 +2,14 @@ import numpy as np
 import pandas as pd
 import gymnasium as gym
 from gymnasium import spaces
+from datetime import UTC, datetime
 
 from data.fetcher import normalize_window
 
 
 SIZE_MAP = {0: 0.25, 1: 0.50, 2: 0.75, 3: 1.00}
+DIRECTION_LABELS = {0: "HOLD", 1: "BUY", 2: "SELL"}
+MARKET_COLUMNS = ["open", "high", "low", "close", "volume"]
 
 
 class CryptoEnv(gym.Env):
@@ -54,19 +57,42 @@ class CryptoEnv(gym.Env):
     def _get_obs(self) -> np.ndarray:
         idx = self._start_idx + self._current_step
         window = self.data.iloc[idx: idx + self.window_size].copy()
-        normalized = normalize_window(window)  # shape (window_size, 6)
+        normalized = normalize_window(window[MARKET_COLUMNS])  # shape (window_size, 5)
 
         current_price = float(self.data.iloc[idx + self.window_size - 1]["close"])
-        if self._position > 0.0 and self._avg_entry_price > 0.0:
-            unrealized_pnl = (current_price - self._avg_entry_price) * self._position / self.initial_balance
-        else:
-            unrealized_pnl = 0.0
+        unrealized_pnl = self._compute_unrealized_return(current_price)
 
         obs = np.zeros((self.window_size, 7), dtype=np.float32)
-        obs[:, :6] = normalized
+        obs[:, :5] = normalized
         obs[:, 5] = self._position
         obs[:, 6] = unrealized_pnl
         return obs
+
+    def _compute_unrealized_return(self, reference_price: float) -> float:
+        if self._position <= 0.0 or self._avg_entry_price <= 0.0:
+            return 0.0
+        price_return = (reference_price - self._avg_entry_price) / self._avg_entry_price
+        return float(price_return * self._position)
+
+    def _compute_unrealized_pnl_usd(self, reference_price: float, balance_reference: float) -> float:
+        return float(balance_reference * self._compute_unrealized_return(reference_price))
+
+    def _compute_realized_pnl_usd(
+        self,
+        traded_fraction: float,
+        execution_price: float,
+        balance_reference: float,
+    ) -> float:
+        if traded_fraction <= 0.0 or self._avg_entry_price <= 0.0:
+            return 0.0
+        price_return = (execution_price - self._avg_entry_price) / self._avg_entry_price
+        return float(balance_reference * traded_fraction * price_return)
+
+    def _step_timestamp(self, idx: int) -> str:
+        raw = self.data.iloc[idx + self.window_size - 1].get("timestamp")
+        if raw is None or pd.isna(raw):
+            return datetime.now(UTC).isoformat()
+        return datetime.fromtimestamp(float(raw) / 1000.0, tz=UTC).isoformat()
 
     def step(self, action):
         action = np.asarray(action)
@@ -76,9 +102,12 @@ class CryptoEnv(gym.Env):
         idx = self._start_idx + self._current_step
         current_price = float(self.data.iloc[idx + self.window_size - 1]["close"])
         next_price = float(self.data.iloc[idx + self.window_size]["close"])
+        timestamp = self._step_timestamp(idx)
 
         delta = SIZE_MAP[size]
         prev_position = self._position
+        balance_before = self._balance
+        realized_pnl = 0.0
 
         if direction == 1:  # Buy
             new_position = min(self._position + delta, 1.0)
@@ -89,6 +118,8 @@ class CryptoEnv(gym.Env):
                 )
             self._position = new_position
         elif direction == 2:  # Sell
+            traded = min(delta, self._position)
+            realized_pnl = self._compute_realized_pnl_usd(traded, current_price, balance_before)
             self._position = max(self._position - delta, 0.0)
             if self._position == 0.0:
                 self._avg_entry_price = 0.0
@@ -101,6 +132,31 @@ class CryptoEnv(gym.Env):
         step_return = price_return * self._position - cost
         self._balance *= (1 + step_return)
         self._returns.append(step_return)
+
+        executed_delta = self._position - prev_position
+        transaction_outcome = (
+            "BUY" if executed_delta > 0 else "SELL" if executed_delta < 0 else "NO_TRANSACTION"
+        )
+        is_transaction = transaction_outcome != "NO_TRANSACTION"
+        fee_usd = balance_before * cost
+        if transaction_outcome == "SELL":
+            realized_pnl -= fee_usd
+        executed_trade = None
+        if is_transaction:
+            executed_trade = {
+                "action": transaction_outcome,
+                "timestamp": timestamp,
+                "execution_price": current_price,
+                "size_percent": abs(executed_delta),
+                "position_before": prev_position,
+                "position_after": self._position,
+                "notional_usd": balance_before * abs(executed_delta),
+                "balance_before": balance_before,
+                "balance_after": self._balance,
+                "fee": fee_usd,
+                "realized_pnl": realized_pnl,
+                "unrealized_pnl_after": self._compute_unrealized_pnl_usd(next_price, self._balance),
+            }
 
         reward = self._compute_reward()
         reward += price_return * self._position * 0.1
@@ -115,8 +171,20 @@ class CryptoEnv(gym.Env):
             "position": self._position,
             "step": self._current_step,
             "cost": cost,
+            "fee_usd": fee_usd,
             "price": current_price,
             "next_price": next_price,
+            "timestamp": timestamp,
+            "requested_direction": DIRECTION_LABELS[direction],
+            "requested_size_percent": delta,
+            "position_before": prev_position,
+            "position_after": self._position,
+            "executed_delta": executed_delta,
+            "transaction_outcome": transaction_outcome,
+            "is_transaction": is_transaction,
+            "executed_trade": executed_trade,
+            "realized_pnl": realized_pnl,
+            "unrealized_pnl_after": self._compute_unrealized_pnl_usd(next_price, self._balance),
         }
         return obs, reward, terminated, truncated, info
 

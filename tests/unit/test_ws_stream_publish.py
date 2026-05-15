@@ -40,13 +40,28 @@ def test_ws_receives_training_update_when_runner_publishes():
                 'best_sharpe': 1.5,
                 'final_balance': 10500.0,
                 'pnl': 500.0,
-                'win_rate': 0.6,
-                'action_counts': {'buy': 3, 'hold': 4, 'sell': 3},
+                'trade_win_rate': 0.6,
+                'transaction_distribution': {'buy': 3, 'sell': 3, 'no_transaction': 4},
                 'cumulative_buys': 10,
                 'cumulative_sells': 8,
-                'action_series': [1],
-                'price_series': [42000.0],
+                'winning_trades': 4,
+                'losing_trades': 2,
+                'flat_trades': 1,
                 'initial_balance': 10000.0,
+                'last_transaction': {
+                    'action': 'BUY',
+                    'timestamp': '2026-05-15T00:00:00Z',
+                    'execution_price': 42000.0,
+                    'size_percent': 0.25,
+                    'position_before': 0.25,
+                    'position_after': 0.5,
+                    'notional_usd': 2500.0,
+                    'balance_before': 10000.0,
+                    'balance_after': 10500.0,
+                    'fee': 10.0,
+                    'realized_pnl': 0.0,
+                    'unrealized_pnl_after': 500.0,
+                },
             }
         )
 
@@ -62,8 +77,8 @@ def test_ws_receives_training_update_when_runner_publishes():
         data = msg['data']
         assert data['generation'] == 1
         assert data['current_sharpe'] == 1.5
-        assert data['action_distribution'] == {'buy': 3, 'hold': 4, 'sell': 3}
-        assert data['last_action']['action'] == 'BUY'
+        assert data['transaction_distribution'] == {'buy': 3, 'sell': 3, 'no_transaction': 4}
+        assert data['last_transaction']['action'] == 'BUY'
 
         client.post('/runs/stop')
 
@@ -98,13 +113,41 @@ def test_ws_receives_step_batch_event_when_runner_publishes_step():
                 'step': 42,
                 'generation': 1,
                 'price': 30100.5,
-                'last_action': 1,
+                'requested_direction': 'BUY',
+                'requested_size_percent': 0.25,
+                'transaction_outcome': 'BUY',
+                'is_transaction': True,
+                'position_before': 0.17,
+                'position_after': 0.42,
+                'executed_delta': 0.25,
                 'position': 0.42,
                 'balance': 10120.0,
                 'pnl': 120.0,
                 'rolling_reward': 0.018,
                 'steps_per_second': 412.0,
                 'equity_curve': [10000.0, 10010.0, 10120.0],
+                'cost': 0.001,
+                'cumulative_buys': 10,
+                'cumulative_sells': 8,
+                'transaction_distribution': {'buy': 3, 'sell': 3, 'no_transaction': 4},
+                'trade_win_rate': 0.6,
+                'winning_trades': 4,
+                'losing_trades': 2,
+                'flat_trades': 1,
+                'executed_trade': {
+                    'action': 'BUY',
+                    'timestamp': '2026-05-15T00:00:00Z',
+                    'execution_price': 30100.5,
+                    'size_percent': 0.25,
+                    'position_before': 0.17,
+                    'position_after': 0.42,
+                    'notional_usd': 2500.0,
+                    'balance_before': 10000.0,
+                    'balance_after': 10120.0,
+                    'fee': 10.0,
+                    'realized_pnl': 0.0,
+                    'unrealized_pnl_after': 30.0,
+                },
             }
         )
 
@@ -120,7 +163,7 @@ def test_ws_receives_step_batch_event_when_runner_publishes_step():
         data = msg['data']
         assert data['step'] == 42
         assert data['price'] == 30100.5
-        assert data['last_action'] == 'BUY'
+        assert data['transaction_outcome'] == 'BUY'
         assert data['position'] == 0.42
         assert data['equity_curve'] == [10000.0, 10010.0, 10120.0]
 

@@ -26,6 +26,7 @@ export default defineConfig({
     port: 4173,
     proxy: {
       '/runs': { target: apiOrigin, changeOrigin: true, bypass: skipHtmlNavigation },
+      '/battle': { target: apiOrigin, changeOrigin: true, bypass: skipHtmlNavigation },
       '/config': { target: apiOrigin, changeOrigin: true, bypass: skipHtmlNavigation },
       '/healthz': { target: apiOrigin, changeOrigin: true },
       '/ws': { target: wsOrigin, ws: true },

@@ -60,7 +60,7 @@ main.py                 ← web backend entry point (Uvicorn launcher)
 │     observation: Box(60, 7)  — OHLCV + position + unrealized_pnl
 │     action:      MultiDiscrete([3, 4])  — direction × size
 ├── agent/trainer.py    ← PPO self-play loop
-│     _evaluate()       — win_rate, action_counts, price_series
+│     _evaluate()       — transaction metrics, price_series, Sharpe snapshot
 │     _notify()         → queue / streaming sink (next phase)
 ├── apps/web/           ← React + Vite + TypeScript frontend skeleton
 └── run_best.py         ← inference runner + compat check

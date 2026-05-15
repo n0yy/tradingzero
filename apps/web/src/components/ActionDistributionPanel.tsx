@@ -2,7 +2,7 @@ import type { TrainingUpdate } from '@/hooks/useTrainingStream'
 import { cn } from '@/lib/utils'
 
 type Row = {
-  label: 'BUY' | 'HOLD' | 'SELL'
+  label: 'BUY' | 'SELL' | 'NO TRANSACTION'
   count: number
   testId: string
   barClass: string
@@ -24,9 +24,14 @@ function DistributionRow({ row, total }: { row: Row; total: number }) {
 }
 
 export function ActionDistributionPanel({ event }: { event: TrainingUpdate | null }) {
+  const total =
+    (event?.transaction_distribution.buy ?? 0) +
+    (event?.transaction_distribution.sell ?? 0) +
+    (event?.transaction_distribution.no_transaction ?? 0)
+
   return (
     <article className="card panel">
-      <h2>Action Distribution</h2>
+      <h2>Transaction Distribution</h2>
       {event === null ? (
         <p data-testid="distribution-empty" className="text-sm text-muted-foreground">
           No live distribution yet — counts appear once a Run streams updates.
@@ -35,16 +40,21 @@ export function ActionDistributionPanel({ event }: { event: TrainingUpdate | nul
         <div className="grid gap-3">
           <div className="grid gap-2">
             <DistributionRow
-              row={{ label: 'BUY', count: event.action_distribution.buy, testId: 'distribution-buy', barClass: 'bg-(--gain)' }}
-              total={event.action_distribution.buy + event.action_distribution.hold + event.action_distribution.sell}
+              row={{ label: 'BUY', count: event.transaction_distribution.buy, testId: 'distribution-buy', barClass: 'bg-(--gain)' }}
+              total={total}
             />
             <DistributionRow
-              row={{ label: 'HOLD', count: event.action_distribution.hold, testId: 'distribution-hold', barClass: 'bg-muted-foreground/40' }}
-              total={event.action_distribution.buy + event.action_distribution.hold + event.action_distribution.sell}
+              row={{
+                label: 'NO TRANSACTION',
+                count: event.transaction_distribution.no_transaction,
+                testId: 'distribution-no-transaction',
+                barClass: 'bg-muted-foreground/40',
+              }}
+              total={total}
             />
             <DistributionRow
-              row={{ label: 'SELL', count: event.action_distribution.sell, testId: 'distribution-sell', barClass: 'bg-(--loss)' }}
-              total={event.action_distribution.buy + event.action_distribution.hold + event.action_distribution.sell}
+              row={{ label: 'SELL', count: event.transaction_distribution.sell, testId: 'distribution-sell', barClass: 'bg-(--loss)' }}
+              total={total}
             />
           </div>
           <dl className="grid grid-cols-2 gap-x-3 border-t border-border pt-2 text-xs">

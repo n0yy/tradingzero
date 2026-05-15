@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import AnalyticsChart from '../components/AnalyticsChart'
+import { DashboardModeTabs } from '@/components/DashboardModeTabs'
 import PriceChart from '../components/PriceChart'
 import { Button } from '@/components/ui/button'
 import { ActionDistributionPanel } from '@/components/ActionDistributionPanel'
@@ -22,18 +23,17 @@ function formatTimestamp(iso: string | null, mode: 'utc' | 'local'): string {
 
 export default function LiveView() {
   const qc = useQueryClient()
-  const streamState = useTrainingStream()
-  const stream = streamState.event
-  const stepBatch = streamState.stepBatch
-  const priceBuffer = streamState.priceBuffer
-  const timeMode = useUIStore((s) => s.timeMode)
-  const toggleTimeMode = useUIStore((s) => s.toggleTimeMode)
-
   const statusQuery = useQuery({
     queryKey: ['run-status'],
     queryFn: fetchRunStatus,
     refetchInterval: 3000,
   })
+  const streamState = useTrainingStream(statusQuery.data?.run_id ?? null)
+  const stream = streamState.event
+  const stepBatch = streamState.stepBatch
+  const priceBuffer = streamState.priceBuffer
+  const timeMode = useUIStore((s) => s.timeMode)
+  const toggleTimeMode = useUIStore((s) => s.toggleTimeMode)
   const retryMutation = useMutation({
     mutationFn: retryRun,
     onSuccess: async () => {
@@ -56,11 +56,6 @@ export default function LiveView() {
     },
   })
 
-  const trendPoints = useMemo(() => {
-    if (!stream) return []
-    return [{ generation: stream.generation, sharpe: stream.current_sharpe, pnl: stream.pnl }]
-  }, [stream])
-
   const liveState = useMemo(
     () =>
       deriveLiveViewState({
@@ -77,14 +72,20 @@ export default function LiveView() {
 
   return (
     <main className="dashboard">
-      <header className="topbar">
-        <div className="flex items-center gap-3">
-          <h1>TradingZero Dashboard</h1>
-          <LiveViewStateBadge state={liveState} />
+      <header className="topbar dashboard-topbar">
+        <div className="dashboard-title-cluster">
+          <div className="flex items-center gap-3">
+            <h1>TradingZero Dashboard</h1>
+            <LiveViewStateBadge state={liveState} />
+          </div>
+          <p className="panel-subtle">Training stream, checkpoints, and live portfolio telemetry.</p>
         </div>
-        <Button onClick={toggleTimeMode} variant="outline" size="sm" type="button">
-          Time: {timeMode.toUpperCase()}
-        </Button>
+        <DashboardModeTabs />
+        <div className="dashboard-time-control">
+          <Button onClick={toggleTimeMode} variant="outline" size="sm" type="button">
+            Time: {timeMode.toUpperCase()}
+          </Button>
+        </div>
       </header>
 
       <KpiStrip event={stream} stepBatch={stepBatch} />
@@ -149,9 +150,15 @@ export default function LiveView() {
         </article>
       </section>
 
-      <section className="grid">
-        <article className="card panel analytics-card">
-          <AnalyticsChart points={trendPoints} />
+      <section className="grid analytics-section">
+        <article className="card panel analytics-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Profit vs Loss Steps</h2>
+              <p className="panel-subtle">Live distribution across every streamed step in the current run.</p>
+            </div>
+          </div>
+          <AnalyticsChart distribution={streamState.profitLossDistribution} />
         </article>
       </section>
     </main>

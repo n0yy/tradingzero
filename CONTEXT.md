@@ -27,9 +27,34 @@ One Step's decision. Components:
 - **Size**: 25% | 50% | 75% | 100% of available capital
 - **Position before/after**: fraction of capital invested, in [0, 1]
 
-### Last Action
+### Requested Action
 
-The most recent Action emitted by the agent on the live training stream. Surfaced in the dashboard for at-a-glance visibility.
+The raw Action proposed by the policy for a Step, before environment constraints such as an already-full or already-empty position are applied.
+
+### Executed Trade
+
+The actual position delta applied by the environment on a Step; this is the source of truth for cumulative BUY/SELL and overtrading analysis.
+
+### Transaction Count
+
+The number of Steps that produced a non-zero Executed Trade; one Step contributes at most one BUY or one SELL transaction regardless of size delta.
+
+### Transaction Outcome
+
+The per-Step portfolio outcome used by the live dashboard: BUY, SELL, or NO TRANSACTION.
+
+### Trade Win Rate
+
+The cumulative ratio of winning realized exits to all realized exits in the current Run. Computed from `realized_pnl` on SELL-side **Executed Trade** records; BUY trades do not count toward the denominator because they do not realize PnL yet.
+
+## Relationships
+
+- A **Requested Action** may or may not produce an **Executed Trade**
+- **Transaction Count** is derived from **Executed Trade**, not from **Requested Action**
+
+### Last Transaction
+
+The most recent Executed Trade emitted on the live training stream. Surfaced in the dashboard for at-a-glance visibility because it reflects what actually changed in the portfolio.
 
 ### Live Stream
 
@@ -45,19 +70,21 @@ The dashboard's primary screen. Shows the active Run as it trains. Hero element 
 
 The Live View's price chart renders only the most recent N Steps (default 500). Older Steps scroll off the left edge as new ones arrive. They remain in the database, queryable via history endpoints, but are not in the live viewport. This is "TV screen" semantics — focused on the present, not browsable in-place.
 
+The price line is continuous across all Steps. Trade markers appear only for Steps that produced an **Executed Trade**.
+
 ### Step batch
 
 The unit of WebSocket push for live updates. Backend buffers Steps as the trainer emits them, then flushes a batch every ~100ms (~10 fps). One `step_batch` event carries an array of Step records. Per-step push would saturate the browser; per-episode push would feel choppy. 100ms batches are the floor where smoothness matches what the eye perceives as continuous motion.
 
 ### Training update
 
-The per-Generation summary event on the live stream (`training_update`). Carries Sharpe, best-Sharpe, win-rate, action distribution, last action, progress. Pre-existing event, retained alongside Step batch — they serve different views: KPI strip and Sharpe trajectory consume `training_update` (per-gen), live price chart consumes `step_batch` (per-step). Aggregating Sharpe from raw Steps would be noisy; emitting Steps as if they were Generations would lie about what each measurement means.
+The per-Generation summary event on the live stream (`training_update`). Carries Sharpe, best-Sharpe, trade-win-rate, transaction distribution, last transaction, and progress. Pre-existing event, retained alongside Step batch — they serve different views: KPI strip consumes `training_update` (per-gen) plus live Step deltas, while the price chart consumes `step_batch` (per-step). Aggregating Sharpe from raw Steps would be noisy; emitting Steps as if they were Generations would lie about what each measurement means.
 
 ## Surfaces (dashboard routes)
 
 ### Live View — `/`
 
-Default route. Hero is the price chart with overlaid trade markers. KPI strip on top (Sharpe, best Sharpe, balance, PnL, win rate, progress). Below the chart: three compact panels — Last Action, Run Controls, Action Distribution. Side nav on the left for secondary surfaces.
+Default route. Hero is the price chart with overlaid trade markers. KPI strip on top (Sharpe, best Sharpe, balance, PnL, trade win rate, progress). Below the chart: three compact panels — Last Transaction, Run Controls, Transaction Distribution. Side nav on the left for secondary surfaces.
 
 Live View has three idle states, each with its own affordance:
 - **Disconnected** (Live Stream not connected): warning banner + retry, chart skeleton.

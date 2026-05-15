@@ -1,6 +1,4 @@
-import type { PriceBufferPoint, TrainingUpdate } from '../hooks/useTrainingStream'
-
-export type TrendPoint = { generation: number; sharpe: number; pnl: number }
+import type { PriceBufferPoint, ProfitLossDistribution, TrainingUpdate } from '../hooks/useTrainingStream'
 
 export type PricePoint = { time: number; value: number }
 
@@ -51,7 +49,7 @@ export function toTradeMarkers(actions: number[], prices: number[]) {
 
 export function toPriceChartData(stream: TrainingUpdate | null): PriceChartData {
   if (!stream) return { series: [], markers: [] }
-  const last = stream.last_action
+  const last = stream.last_transaction
   if (!last) return { series: [], markers: [] }
 
   const series: PricePoint[] = [{ time: stream.generation, value: last.execution_price }]
@@ -101,24 +99,60 @@ export function fromPriceBuffer(buffer: PriceBufferPoint[]): PriceChartData {
   return { series, markers }
 }
 
-export function toEchartsOptions(points: TrendPoint[]) {
+export function toProfitLossOptions(distribution: ProfitLossDistribution) {
+  const data = [
+    { name: 'Profit', value: distribution.profit, itemStyle: { color: '#2ee6b8' } },
+    { name: 'Loss', value: distribution.loss, itemStyle: { color: '#ff6b6b' } },
+    { name: 'Flat', value: distribution.flat, itemStyle: { color: '#7ca099' } },
+  ]
+  const total = distribution.profit + distribution.loss + distribution.flat
+
   return {
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    grid: { left: 30, right: 20, top: 20, bottom: 25 },
-    xAxis: {
-      type: 'category',
-      data: points.map((p) => p.generation),
-      axisLine: { lineStyle: { color: '#29524a' } },
-      axisLabel: { color: '#7ca099' },
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} steps',
     },
-    yAxis: [
-      { type: 'value', axisLine: { lineStyle: { color: '#29524a' } }, axisLabel: { color: '#7ca099' }, splitLine: { lineStyle: { color: '#17342f' } } },
-      { type: 'value', axisLine: { lineStyle: { color: '#29524a' } }, axisLabel: { color: '#7ca099' }, splitLine: { show: false } },
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '41%',
+        style: {
+          text: String(total),
+          fill: '#e5f4ef',
+          fontSize: 34,
+          fontWeight: 700,
+          textAlign: 'center',
+        },
+      },
+      {
+        type: 'text',
+        left: 'center',
+        top: '55%',
+        style: {
+          text: 'Tracked Steps',
+          fill: '#7ca099',
+          fontSize: 13,
+          textAlign: 'center',
+        },
+      },
     ],
     series: [
-      { name: 'Sharpe', type: 'line', smooth: true, data: points.map((p) => p.sharpe), lineStyle: { color: '#2ee6b8' }, showSymbol: false },
-      { name: 'PnL', type: 'bar', yAxisIndex: 1, data: points.map((p) => p.pnl), itemStyle: { color: '#1ea483' } },
+      {
+        name: 'Step Outcome',
+        type: 'pie',
+        radius: ['60%', '82%'],
+        center: ['50%', '48%'],
+        avoidLabelOverlap: true,
+        label: { show: false },
+        labelLine: { show: false },
+        itemStyle: {
+          borderColor: '#101f1c',
+          borderWidth: 6,
+        },
+        data,
+      },
     ],
   }
 }

@@ -10,6 +10,22 @@ from stable_baselines3.common.callbacks import BaseCallback
 from logger import logger
 
 
+def _empty_transaction_distribution() -> dict[str, int]:
+    return {"buy": 0, "sell": 0, "no_transaction": 0}
+
+
+def _empty_trade_outcomes() -> dict[str, int]:
+    return {"winning": 0, "losing": 0, "flat": 0}
+
+
+def _transaction_outcome_code(value: str) -> int:
+    if value == "BUY":
+        return 1
+    if value == "SELL":
+        return 2
+    return 0
+
+
 class TrainingStreamCallback(BaseCallback):
     def __init__(self, trainer: "Trainer", generation: int):
         super().__init__()
@@ -70,6 +86,9 @@ class Trainer:
         self._cumulative_sells: int = 0
         self._stream_step: int = 0
         self._equity_curve: list[float] = [float(env.initial_balance)]
+        self._last_transaction: Optional[dict] = None
+        self._generation_transaction_distribution: dict[str, int] = _empty_transaction_distribution()
+        self._trade_outcomes: dict[str, int] = _empty_trade_outcomes()
 
     def _build_model(self) -> PPO:
         return PPO(
@@ -86,10 +105,9 @@ class Trainer:
     def _evaluate(self, model: PPO, n_eval_episodes: int = 5) -> dict:
         episode_rewards: list[float] = []
         episode_final_balances: list[float] = []
-        wins = 0
-        action_counts = {"buy": 0, "hold": 0, "sell": 0}
+        transaction_distribution = _empty_transaction_distribution()
         price_series: list[float] = []
-        action_series: list[int] = []
+        transaction_outcome_series: list[int] = []
 
         for ep in range(n_eval_episodes):
             if self._stop:
@@ -99,35 +117,32 @@ class Trainer:
             total_reward = 0.0
             last_balance = self.env.initial_balance
             ep_prices: list[float] = []
-            ep_actions: list[int] = []
+            ep_outcomes: list[int] = []
             while not done:
                 if self._stop:
                     break
-                action, _ = model.predict(obs, deterministic=False)
-                action_int = int(action) if np.ndim(action) == 0 else int(action[0])
+                action, _ = model.predict(obs, deterministic=True)
                 obs, reward, terminated, truncated, info = self.env.step(action)
                 total_reward += float(reward)
                 last_balance = info.get("balance", last_balance)
                 done = terminated or truncated
-
-                if action_int == 0:
-                    action_counts["hold"] += 1
-                elif action_int == 1:
-                    action_counts["buy"] += 1
+                transaction_outcome = str(info.get("transaction_outcome", "NO_TRANSACTION"))
+                if transaction_outcome == "BUY":
+                    transaction_distribution["buy"] += 1
+                elif transaction_outcome == "SELL":
+                    transaction_distribution["sell"] += 1
                 else:
-                    action_counts["sell"] += 1
+                    transaction_distribution["no_transaction"] += 1
 
-                ep_prices.append(float(info.get("balance", last_balance)))
-                ep_actions.append(action_int)
+                ep_prices.append(float(info.get("price", info.get("next_price", last_balance))))
+                ep_outcomes.append(_transaction_outcome_code(transaction_outcome))
 
             episode_rewards.append(total_reward)
             episode_final_balances.append(last_balance)
-            if last_balance > self.env.initial_balance:
-                wins += 1
 
             if ep == 0:
                 price_series = ep_prices
-                action_series = ep_actions
+                transaction_outcome_series = ep_outcomes
 
         if not episode_rewards:
             return {
@@ -135,10 +150,9 @@ class Trainer:
                 "final_balance": self.env.initial_balance,
                 "pnl": 0.0,
                 "initial_balance": self.env.initial_balance,
-                "win_rate": 0.0,
-                "action_counts": action_counts,
+                "transaction_distribution": transaction_distribution,
                 "price_series": price_series,
-                "action_series": action_series,
+                "transaction_outcome_series": transaction_outcome_series,
             }
 
         rewards = np.array(episode_rewards, dtype=np.float32)
@@ -148,17 +162,15 @@ class Trainer:
 
         avg_final_balance = float(np.mean(episode_final_balances))
         pnl = avg_final_balance - self.env.initial_balance
-        win_rate = wins / n_eval_episodes if n_eval_episodes > 0 else 0.0
 
         return {
             "sharpe": sharpe,
             "final_balance": avg_final_balance,
             "pnl": pnl,
             "initial_balance": self.env.initial_balance,
-            "win_rate": win_rate,
-            "action_counts": action_counts,
+            "transaction_distribution": transaction_distribution,
             "price_series": price_series,
-            "action_series": action_series,
+            "transaction_outcome_series": transaction_outcome_series,
         }
 
     def _save_checkpoint(self, model: PPO, name: str) -> Path:
@@ -181,6 +193,24 @@ class Trainer:
         if self.update_queue is not None:
             self.update_queue.put(payload)
 
+    def _current_trade_win_rate(self) -> float:
+        realized_exits = sum(self._trade_outcomes.values())
+        if realized_exits <= 0:
+            return 0.0
+        return self._trade_outcomes["winning"] / realized_exits
+
+    def _record_realized_trade(self, executed_trade: dict | None) -> None:
+        if executed_trade is None or executed_trade.get("action") != "SELL":
+            return
+
+        realized_pnl = float(executed_trade.get("realized_pnl", 0.0))
+        if realized_pnl > 0:
+            self._trade_outcomes["winning"] += 1
+        elif realized_pnl < 0:
+            self._trade_outcomes["losing"] += 1
+        else:
+            self._trade_outcomes["flat"] += 1
+
     def _notify_step(self, generation: int, action, reward: float, info: dict) -> None:
         self._stream_step += 1
         balance = float(info.get("balance", self.env.initial_balance))
@@ -190,19 +220,51 @@ class Trainer:
 
         action_array = np.asarray(action)
         direction = int(action_array[0]) if action_array.ndim > 0 else int(action_array)
+        requested_size_percent = float(info.get("requested_size_percent", 0.0))
+        transaction_outcome = str(info.get("transaction_outcome", "NO_TRANSACTION"))
+        is_transaction = bool(info.get("is_transaction", False))
+        if transaction_outcome == "BUY":
+            self._cumulative_buys += 1
+            self._generation_transaction_distribution["buy"] += 1
+        elif transaction_outcome == "SELL":
+            self._cumulative_sells += 1
+            self._generation_transaction_distribution["sell"] += 1
+        else:
+            self._generation_transaction_distribution["no_transaction"] += 1
+
+        executed_trade = info.get("executed_trade")
+        if executed_trade is not None:
+            self._last_transaction = dict(executed_trade)
+            self._record_realized_trade(executed_trade)
         price = float(info.get("price", info.get("next_price", balance)))
         self._notify({
             "kind": "step_batch",
             "step": self._stream_step,
             "generation": generation,
             "price": price,
-            "last_action": direction,
-            "position": float(info.get("position", 0.0)),
+            "requested_direction": info.get("requested_direction", "HOLD" if direction == 0 else "BUY" if direction == 1 else "SELL"),
+            "requested_size_percent": requested_size_percent,
+            "transaction_outcome": transaction_outcome,
+            "is_transaction": is_transaction,
+            "position": float(info.get("position_after", info.get("position", 0.0))),
+            "position_before": float(info.get("position_before", 0.0)),
+            "position_after": float(info.get("position_after", info.get("position", 0.0))),
+            "executed_delta": float(info.get("executed_delta", 0.0)),
             "balance": balance,
             "pnl": balance - float(self.env.initial_balance),
             "rolling_reward": float(reward),
             "steps_per_second": 0.0,
             "equity_curve": list(self._equity_curve),
+            "cost": float(info.get("cost", 0.0)),
+            "cumulative_buys": self._cumulative_buys,
+            "cumulative_sells": self._cumulative_sells,
+            "transaction_distribution": dict(self._generation_transaction_distribution),
+            "trade_win_rate": self._current_trade_win_rate(),
+            "winning_trades": self._trade_outcomes["winning"],
+            "losing_trades": self._trade_outcomes["losing"],
+            "flat_trades": self._trade_outcomes["flat"],
+            "executed_trade": dict(executed_trade) if executed_trade is not None else None,
+            "timestamp": info.get("timestamp"),
         })
 
     def stop(self) -> None:
@@ -242,6 +304,8 @@ class Trainer:
             if self._stop:
                 break
 
+            self._generation_transaction_distribution = _empty_transaction_distribution()
+
             logger.info(f"Generation {generation + 1}/{self.total_generations}")
             self._model.learn(
                 total_timesteps=self.n_steps,
@@ -254,13 +318,14 @@ class Trainer:
             final_balance = eval_result["final_balance"]
             pnl = eval_result["pnl"]
             initial_balance = eval_result["initial_balance"]
-            win_rate = eval_result.get("win_rate", 0.0)
-            action_counts = eval_result.get("action_counts", {"buy": 0, "hold": 0, "sell": 0})
+            transaction_distribution = eval_result.get("transaction_distribution", _empty_transaction_distribution())
             price_series = eval_result.get("price_series", [])
-            action_series = eval_result.get("action_series", [])
-            self._cumulative_buys += action_counts.get("buy", 0)
-            self._cumulative_sells += action_counts.get("sell", 0)
-            logger.info(f"  Sharpe: {current_sharpe:.4f} (best: {self.best_sharpe:.4f}) | Balance: {final_balance:.2f} | PnL: {pnl:+.2f} | win={win_rate*100:.0f}%")
+            transaction_outcome_series = eval_result.get("transaction_outcome_series", [])
+            trade_win_rate = self._current_trade_win_rate()
+            logger.info(
+                f"  Sharpe: {current_sharpe:.4f} (best: {self.best_sharpe:.4f}) | "
+                f"Balance: {final_balance:.2f} | PnL: {pnl:+.2f} | trade_win={trade_win_rate*100:.0f}%"
+            )
 
             if (generation + 1) % self.checkpoint_interval == 0:
                 ckpt = self._save_checkpoint(self._model, f"gen_{generation + 1:04d}")
@@ -298,12 +363,17 @@ class Trainer:
                 "final_balance": final_balance,
                 "pnl": pnl,
                 "initial_balance": initial_balance,
-                "win_rate": win_rate,
-                "action_counts": action_counts,
+                "transaction_distribution": dict(self._generation_transaction_distribution),
                 "price_series": price_series,
-                "action_series": action_series,
+                "action_series": transaction_outcome_series,
+                "action_counts": transaction_distribution,
                 "cumulative_buys": self._cumulative_buys,
                 "cumulative_sells": self._cumulative_sells,
+                "trade_win_rate": trade_win_rate,
+                "winning_trades": self._trade_outcomes["winning"],
+                "losing_trades": self._trade_outcomes["losing"],
+                "flat_trades": self._trade_outcomes["flat"],
+                "last_transaction": dict(self._last_transaction) if self._last_transaction is not None else None,
             })
 
         if self.wandb_project:

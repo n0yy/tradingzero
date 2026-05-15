@@ -106,7 +106,7 @@ import hypothesis.strategies as st
 def test_reward_is_always_finite(actions):
     from env.crypto_env import CryptoEnv
     import numpy as np
-    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500)
+    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500, transaction_cost=0.0)
     env.reset(seed=42)
     for direction, size in actions:
         obs, reward, terminated, truncated, info = env.step(np.array([direction, size]))
@@ -123,7 +123,7 @@ def test_reward_is_always_finite(actions):
 def test_obs_always_in_range(actions):
     from env.crypto_env import CryptoEnv
     import numpy as np
-    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500)
+    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500, transaction_cost=0.0)
     env.reset(seed=42)
     for direction, size in actions:
         obs, reward, terminated, truncated, info = env.step(np.array([direction, size]))
@@ -146,7 +146,7 @@ def test_action_space_is_multidiscrete():
 def test_buy_25_from_zero_gives_position_025():
     from env.crypto_env import CryptoEnv
     import numpy as np
-    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500)
+    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500, transaction_cost=0.0)
     env.reset(seed=0)
     # action: direction=Buy(1), size=25%(0)
     _, _, _, _, info = env.step(np.array([1, 0]))
@@ -214,6 +214,57 @@ def test_transaction_cost_proportional_to_actual_change():
     env.step(np.array([1, 3]))  # buy 100% → traded=1.0
     _, _, _, _, info = env.step(np.array([2, 0]))  # sell 25% → traded=0.25
     assert abs(info.get("cost", -1) - env.transaction_cost * 0.25) < 1e-6
+
+
+def test_step_info_reports_executed_buy_trade():
+    from env.crypto_env import CryptoEnv
+    import numpy as np
+
+    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500)
+    env.reset(seed=0)
+    _, _, _, _, info = env.step(np.array([1, 0]))  # buy 25%
+
+    assert info["requested_direction"] == "BUY"
+    assert info["transaction_outcome"] == "BUY"
+    assert info["is_transaction"] is True
+    assert abs(info["position_before"] - 0.0) < 1e-6
+    assert abs(info["position_after"] - 0.25) < 1e-6
+    assert abs(info["executed_delta"] - 0.25) < 1e-6
+    assert info["executed_trade"] is not None
+    assert info["executed_trade"]["action"] == "BUY"
+    assert info["executed_trade"]["realized_pnl"] == 0.0
+
+
+def test_step_info_reports_realized_pnl_on_sell_trade():
+    from env.crypto_env import CryptoEnv
+    import numpy as np
+
+    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500, transaction_cost=0.0)
+    env.reset(seed=0)
+    env.step(np.array([1, 3]))  # buy 100%
+    _, _, _, _, info = env.step(np.array([2, 3]))  # sell 100%
+
+    assert info["transaction_outcome"] == "SELL"
+    assert info["executed_trade"] is not None
+    assert info["executed_trade"]["action"] == "SELL"
+    assert "realized_pnl" in info["executed_trade"]
+    assert info["executed_trade"]["realized_pnl"] > 0.0
+
+
+def test_step_info_reports_no_transaction_when_buy_is_blocked():
+    from env.crypto_env import CryptoEnv
+    import numpy as np
+
+    env = CryptoEnv(data=make_mock_data(n=700), window_size=WINDOW_SIZE, episode_length=500)
+    env.reset(seed=0)
+    env.step(np.array([1, 3]))  # buy 100%
+    _, _, _, _, info = env.step(np.array([1, 3]))  # buy again while full
+
+    assert info["requested_direction"] == "BUY"
+    assert info["transaction_outcome"] == "NO_TRANSACTION"
+    assert info["is_transaction"] is False
+    assert abs(info["executed_delta"]) < 1e-6
+    assert info["executed_trade"] is None
 
 
 def test_reward_finite_for_all_multidiscrete_actions():

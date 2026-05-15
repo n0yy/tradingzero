@@ -81,3 +81,38 @@ class ActiveConfigResponse(BaseModel):
     version: str | None = None
     created_at: str | None = None
     config: SafeConfigPayload | None = None
+
+
+class BattleTrade(BaseModel):
+    action: str
+    timestamp: str
+    execution_price: float
+    size_percent: float
+    position_before: float
+    position_after: float
+    notional_usd: float
+    balance_before: float
+    balance_after: float
+    fee: float
+    realized_pnl: float
+    unrealized_pnl_after: float
+
+
+class BattleResultResponse(BaseModel):
+    checkpoint: str
+    symbol: str
+    timeframe: str
+    initial_balance: float
+    final_balance: float
+    pnl: float
+    pnl_pct: float
+    total_steps: int
+    total_trades: int
+    trade_win_rate: float
+    winning_trades: int
+    losing_trades: int
+    flat_trades: int
+    transaction_distribution: dict[str, int]
+    price_series: list[float]
+    equity_curve: list[float]
+    executed_trades: list[BattleTrade]

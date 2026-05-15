@@ -41,8 +41,60 @@ export type ActiveConfigResponse = {
   config: SafeConfigPayload | null
 }
 
+export type BattleTrade = {
+  action: 'BUY' | 'SELL'
+  timestamp: string
+  execution_price: number
+  size_percent: number
+  position_before: number
+  position_after: number
+  notional_usd: number
+  balance_before: number
+  balance_after: number
+  fee: number
+  realized_pnl: number
+  unrealized_pnl_after: number
+}
+
+export type BattleResult = {
+  checkpoint: string
+  symbol: string
+  timeframe: string
+  initial_balance: number
+  final_balance: number
+  pnl: number
+  pnl_pct: number
+  total_steps: number
+  total_trades: number
+  trade_win_rate: number
+  winning_trades: number
+  losing_trades: number
+  flat_trades: number
+  transaction_distribution: { buy: number; sell: number; no_transaction: number }
+  price_series: number[]
+  equity_curve: number[]
+  executed_trades: BattleTrade[]
+}
+
 async function jsonOrThrow<T>(res: Response, label: string): Promise<T> {
-  if (!res.ok) throw new Error(`${label} failed: ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const payload = (await res.json()) as {
+        detail?: { error?: { message?: string } }
+        error?: { message?: string }
+        message?: string
+      }
+      detail =
+        payload?.detail?.error?.message ??
+        payload?.error?.message ??
+        payload?.message ??
+        ''
+    } catch {
+      detail = ''
+    }
+    throw new Error(detail ? `${label} failed: ${detail}` : `${label} failed: ${res.status}`)
+  }
   return (await res.json()) as T
 }
 
@@ -88,4 +140,9 @@ export async function saveActiveConfig(config: SafeConfigPayload): Promise<Activ
     body: JSON.stringify(config),
   })
   return jsonOrThrow<ActiveConfigResponse>(res, 'save active config')
+}
+
+export async function runBestBattle(): Promise<BattleResult> {
+  const res = await fetch('/battle/best', { method: 'POST' })
+  return jsonOrThrow<BattleResult>(res, 'run best battle')
 }

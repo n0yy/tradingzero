@@ -355,7 +355,7 @@ class TUIApp(App):
         self.query_one("#tile-best-sharpe", MetricBox).set_value("Best Sharpe", "—", "bold green")
         self.query_one("#tile-balance", MetricBox).set_value("Balance", "—", "bold cyan")
         self.query_one("#tile-pnl", MetricBox).set_value("PnL", "—", "bold white")
-        self.query_one("#tile-winrate", MetricBox).set_value("Win Rate", "—", "bold white")
+        self.query_one("#tile-winrate", MetricBox).set_value("Trade Win Rate", "—", "bold white")
         self.query_one("#tile-promotions", MetricBox).set_value("Promotions", "0", "bold magenta")
         self.query_one("#tile-status", MetricBox).set_value("Status", "TRAINING", "bold yellow")
 
@@ -368,9 +368,9 @@ class TUIApp(App):
             except Empty:
                 continue
 
-    def _update_winrate_tile(self, tile: "MetricBox", win_rate: float) -> None:
-        style = "bold green" if win_rate >= 0.5 else "bold red"
-        tile.set_value("Win Rate", f"{win_rate * 100:.0f}%", style)
+    def _update_trade_winrate_tile(self, tile: "MetricBox", trade_win_rate: float) -> None:
+        style = "bold green" if trade_win_rate >= 0.5 else "bold red"
+        tile.set_value("Trade Win Rate", f"{trade_win_rate * 100:.0f}%", style)
 
     def _handle_update(self, payload: dict) -> None:
         if payload.get("type") == "stop":
@@ -420,9 +420,9 @@ class TUIApp(App):
             pnl_str = f"+${pnl:,.2f}" if pnl >= 0 else f"-${abs(pnl):,.2f}"
             self.query_one("#tile-pnl", MetricBox).set_value("PnL", pnl_str, pnl_style)
 
-        win_rate = payload.get("win_rate", None)
-        if win_rate is not None:
-            self._update_winrate_tile(self.query_one("#tile-winrate", MetricBox), win_rate)
+        trade_win_rate = payload.get("trade_win_rate", None)
+        if trade_win_rate is not None:
+            self._update_trade_winrate_tile(self.query_one("#tile-winrate", MetricBox), trade_win_rate)
 
         self.query_one("#tile-promotions", MetricBox).set_value(
             "Promotions", str(self._promotions), "bold magenta"
@@ -461,15 +461,15 @@ class TUIApp(App):
             pnl_color = "green" if pnl >= 0 else "red"
             pnl_sign = "+" if pnl >= 0 else "-"
             pnl_log = f" | pnl=[{pnl_color}]{pnl_sign}${abs(pnl):,.2f}[/{pnl_color}]"
-        win_log = ""
-        if win_rate is not None:
-            win_log = f" | win={win_rate * 100:.0f}%"
+        trade_win_log = ""
+        if trade_win_rate is not None:
+            trade_win_log = f" | trade_win={trade_win_rate * 100:.0f}%"
         msg = (
             f"[cyan]Gen {generation}[/cyan]"
             f" | sharpe=[{sharpe_color}]{current_sharpe:.4f}[/{sharpe_color}]"
             f" | best=[green]{best_sharpe:.4f}[/green]"
             f"{pnl_log}"
-            f"{win_log}"
+            f"{trade_win_log}"
         )
         if promoted:
             msg += " | [bold green]★ PROMOTED[/bold green]"
