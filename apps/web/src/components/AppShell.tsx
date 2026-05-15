@@ -1,42 +1,108 @@
+import type { ComponentType } from 'react'
 import { NavLink, Outlet } from 'react-router'
+import { Bot, Gauge, ListChecks, Settings2, ShieldAlert, SunMoon, Timer } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
+import { useUIStore } from '@/store/ui'
 
-const navItems: { to: string; label: string; end?: boolean }[] = [
-  { to: '/', label: 'Live View', end: true },
-  { to: '/config', label: 'Config' },
-  { to: '/runs', label: 'Runs' },
-  { to: '/errors', label: 'Errors' },
+const navItems: { to: string; label: string; end?: boolean; icon: ComponentType<{ className?: string }> }[] = [
+  { to: '/', label: 'Live View', end: true, icon: Gauge },
+  { to: '/battle', label: 'Battle', icon: Bot },
+  { to: '/config', label: 'Config', icon: Settings2 },
+  { to: '/runs', label: 'Runs', icon: ListChecks },
+  { to: '/errors', label: 'Errors', icon: ShieldAlert },
 ]
 
 export function AppShell() {
+  const timeMode = useUIStore((s) => s.timeMode)
+  const toggleTimeMode = useUIStore((s) => s.toggleTimeMode)
+
   return (
-    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[220px_1fr]">
-      <aside className="border-b border-sidebar-border bg-sidebar px-4 py-6 md:border-b-0 md:border-r">
-        <div className="mb-6 font-display text-lg font-bold tracking-wide text-primary">
-          TradingZero
+    <SidebarProvider defaultOpen>
+      <Sidebar collapsible="icon" variant="sidebar">
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel className="font-display text-base tracking-wide text-primary">
+              TradingZero
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <nav aria-label="primary">
+                <SidebarMenu>
+                  {navItems.map((item) => (
+                    <SidebarMenuItem key={item.to}>
+                      <NavLink to={item.to} end={item.end}>
+                        {({ isActive }) => (
+                          <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                            <span>
+                              <item.icon className="size-4" />
+                              <span>{item.label}</span>
+                            </span>
+                          </SidebarMenuButton>
+                        )}
+                      </NavLink>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </nav>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarSeparator />
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={toggleTimeMode}
+                tooltip={`Time mode: ${timeMode.toUpperCase()}`}
+                className="w-full"
+              >
+                <Timer className="size-4" />
+                <span>Time</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge>{timeMode.toUpperCase()}</SidebarMenuBadge>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                disabled
+                tooltip="Theme toggle (placeholder)"
+                className="w-full"
+              >
+                <SunMoon className="size-4" />
+                <span>Theme</span>
+              </SidebarMenuButton>
+              <SidebarMenuBadge>Dark/Light</SidebarMenuBadge>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+      <SidebarInset>
+        <div className="flex h-12 items-center gap-2 border-b border-border/70 px-3">
+          <SidebarTrigger data-testid="sidebar-trigger" />
+          <span className="font-display text-sm tracking-wide text-muted-foreground">TradingZero</span>
+          <Settings2 className="ml-auto size-4 text-muted-foreground" aria-hidden="true" />
         </div>
-        <nav aria-label="primary" className="flex gap-1 overflow-x-auto md:grid md:gap-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                cn(
-                  'block rounded-md px-3 py-2 text-sm whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                  isActive && 'border border-primary/30 bg-primary/10 text-foreground',
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-      <div className="min-w-0">
-        <Outlet />
-      </div>
-    </div>
+        <div className={cn('min-w-0 flex-1')}>
+          <Outlet />
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }

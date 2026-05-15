@@ -7,8 +7,10 @@ import asyncio
 from queue import Empty
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from sqlalchemy import inspect, text
 
 from backend.battle_runtime import run_battle
+from backend.evaluation_spec import RunEvaluationPlan, build_synthetic_run_evaluation_plan
 from backend.lifecycle import ActiveRunError, NoActiveRunError, RunController
 from backend.event_bus import TrainingEventBus
 from backend.event_mapper import map_step_batch_payload, map_training_payload
@@ -22,6 +24,7 @@ from backend.schemas import (
     BattleResultResponse,
     EventListResponse,
     HealthResponse,
+    RunEvaluationRecordListResponse,
     RunHistoryResponse,
     RunErrorListResponse,
     RunStatusResponse,
@@ -33,14 +36,27 @@ DEFAULT_CONFIG_PATH = 'config.yaml'
 DEFAULT_RUNNER_MODE = 'trainer'
 
 
+def _ensure_run_evaluation_spec_column(engine) -> None:
+    inspector = inspect(engine)
+    if 'runs' not in inspector.get_table_names():
+        return
+    column_names = {column['name'] for column in inspector.get_columns('runs')}
+    if 'evaluation_spec_payload' in column_names:
+        return
+    with engine.begin() as connection:
+        connection.execute(text('ALTER TABLE runs ADD COLUMN evaluation_spec_payload TEXT'))
+
+
 def create_app(
     database_url: str = DEFAULT_DB_URL,
     config_path: str = DEFAULT_CONFIG_PATH,
     runner_mode: str = DEFAULT_RUNNER_MODE,
     runner_factory_override: Callable[..., RunnerAdapter] | None = None,
+    evaluation_plan_factory_override: Callable[[dict], RunEvaluationPlan] | None = None,
 ) -> FastAPI:
     app = FastAPI(title='TradingZero API')
     event_bus = TrainingEventBus()
+    module: RunLifecycleModule | None = None
 
     if database_url.startswith('sqlite:///'):
         db_file = Path(database_url.replace('sqlite:///', '', 1))
@@ -49,9 +65,14 @@ def create_app(
     engine = build_engine(database_url)
     session_factory = build_session_factory(engine)
     Base.metadata.create_all(bind=engine)
+    _ensure_run_evaluation_spec_column(engine)
 
     def on_training_update(payload: dict) -> None:
         kind = payload.get('kind', 'generation_update')
+        if kind != 'step_batch' and module is not None:
+            run_id = module.controller.status().run_id
+            if run_id is not None:
+                module.persist_evaluation_record(run_id, payload)
         if kind == 'step_batch':
             event = map_step_batch_payload(payload)
         else:
@@ -59,28 +80,46 @@ def create_app(
         event_bus.publish(event)
 
     if runner_factory_override is not None:
-        def build_override(resume_from: str | None) -> RunnerAdapter:
+        def build_override(resume_from: str | None, evaluation_plan: RunEvaluationPlan | None) -> RunnerAdapter:
             try:
-                return runner_factory_override(on_training_update, resume_from)
+                return runner_factory_override(on_training_update, resume_from, evaluation_plan)
             except TypeError:
-                return runner_factory_override(on_training_update)
+                try:
+                    return runner_factory_override(on_training_update, resume_from)
+                except TypeError:
+                    return runner_factory_override(on_training_update)
 
-        runner_factory = lambda: build_override(None)
-        runner_factory_with_resume = lambda resume_from: build_override(resume_from)
+        runner_factory = lambda: build_override(None, None)
+        runner_factory_builder = lambda resume_from, evaluation_plan: build_override(resume_from, evaluation_plan)
     else:
         if runner_mode == 'trainer':
             runner_factory = lambda: TrainerRunnerAdapter(config_path=config_path, resume=True, on_update=on_training_update)
-            runner_factory_with_resume = lambda resume_from: TrainerRunnerAdapter(
+            runner_factory_builder = lambda resume_from, evaluation_plan: TrainerRunnerAdapter(
                 config_path=config_path,
                 resume=True,
                 resume_from=resume_from,
                 on_update=on_training_update,
+                evaluation_plan=evaluation_plan,
             )
         elif runner_mode == 'inmemory':
             runner_factory = lambda: InMemoryRunnerAdapter(on_update=on_training_update)
-            runner_factory_with_resume = lambda _resume_from: InMemoryRunnerAdapter(on_update=on_training_update)
+            runner_factory_builder = (
+                lambda _resume_from, _evaluation_plan: InMemoryRunnerAdapter(on_update=on_training_update)
+            )
         else:
             raise ValueError(f'Unsupported runner_mode: {runner_mode}')
+
+    if evaluation_plan_factory_override is not None:
+        evaluation_plan_factory = evaluation_plan_factory_override
+    elif runner_factory_override is not None or runner_mode == 'inmemory':
+        evaluation_plan_factory = build_synthetic_run_evaluation_plan
+    elif runner_mode == 'trainer':
+        from backend.training_runtime import fetch_data
+        from backend.evaluation_spec import build_run_evaluation_plan
+
+        def evaluation_plan_factory(config: dict) -> RunEvaluationPlan:
+            data = fetch_data(config)
+            return build_run_evaluation_plan(config=config, data=data)
 
     controller = RunController(runner_factory=runner_factory)
     module = RunLifecycleModule(
@@ -88,7 +127,8 @@ def create_app(
         session_factory=session_factory,
         config_path=config_path,
         retention_days=90,
-        runner_factory_with_resume=runner_factory_with_resume,
+        runner_factory_builder=runner_factory_builder,
+        evaluation_plan_factory=evaluation_plan_factory,
     )
     controller.set_state_listener(module.persist_state)
     module.mark_interrupted_runs()
@@ -132,6 +172,10 @@ def create_app(
     @app.get('/runs', response_model=RunHistoryResponse)
     def list_runs() -> dict[str, list[dict[str, str | None]]]:
         return module.list_runs()
+
+    @app.get('/runs/{run_id}/evaluations', response_model=RunEvaluationRecordListResponse)
+    def list_run_evaluations(run_id: str) -> dict[str, list[dict]]:
+        return module.list_evaluation_records(run_id)
 
     @app.post('/runs/retry', status_code=202, response_model=RunStatusResponse)
     def retry_run() -> dict[str, str | None]:

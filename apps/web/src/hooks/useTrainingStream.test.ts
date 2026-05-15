@@ -210,8 +210,22 @@ describe('useTrainingStream step_batch handling', () => {
         type: 'training_update',
         data: {
           generation: 1,
-          current_sharpe: 1.0,
-          best_sharpe: 1.0,
+          training_sharpe: 0.8,
+          evaluation_sharpe: 1.0,
+          best_evaluation_sharpe: 1.0,
+          promoted: false,
+          evaluation_executed_trade_count: 6,
+          evaluation_sell_realized_exit_count: 2,
+          promotion_gate_reasons: ['Evaluation Sharpe 1.0000 did not beat target 1.0500.'],
+          promotion_gate_checks: [
+            {
+              name: 'evaluation_sharpe_threshold',
+              passed: false,
+              actual: 1.0,
+              target: 1.05,
+              message: 'Evaluation Sharpe 1.0000 did not beat target 1.0500.',
+            },
+          ],
           balance: 10000,
           pnl: 0,
           trade_win_rate: 0.5,
@@ -241,6 +255,11 @@ describe('useTrainingStream step_batch handling', () => {
     })
 
     expect(result.current.event?.generation).toBe(1)
+    expect(result.current.event?.training_sharpe).toBe(0.8)
+    expect(result.current.event?.evaluation_sharpe).toBe(1)
+    expect(result.current.event?.best_evaluation_sharpe).toBe(1)
+    expect(result.current.event?.evaluation_executed_trade_count).toBe(6)
+    expect(result.current.event?.promotion_gate_reasons?.[0]).toContain('did not beat target')
   })
 
   it('tracks profit, loss, and flat step outcomes from equity changes', async () => {

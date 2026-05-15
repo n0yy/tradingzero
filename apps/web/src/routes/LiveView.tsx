@@ -1,14 +1,13 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import AnalyticsChart from '../components/AnalyticsChart'
-import { DashboardModeTabs } from '@/components/DashboardModeTabs'
 import PriceChart from '../components/PriceChart'
 import { Button } from '@/components/ui/button'
 import { ActionDistributionPanel } from '@/components/ActionDistributionPanel'
 import { ChartStateHelper, LiveViewStateBadge } from '@/components/LiveViewStateBanner'
 import { KpiStrip } from '@/components/KpiStrip'
 import { LastActionPanel } from '@/components/LastActionPanel'
+import { PromotionCheckPanel } from '@/components/PromotionCheckPanel'
 import { fetchRunStatus, retryRun, startRun, stopRun } from '@/lib/api'
 import { deriveLiveViewState } from '@/lib/liveViewState'
 import { runControlVisibility } from '@/lib/runControls'
@@ -33,7 +32,6 @@ export default function LiveView() {
   const stepBatch = streamState.stepBatch
   const priceBuffer = streamState.priceBuffer
   const timeMode = useUIStore((s) => s.timeMode)
-  const toggleTimeMode = useUIStore((s) => s.toggleTimeMode)
   const retryMutation = useMutation({
     mutationFn: retryRun,
     onSuccess: async () => {
@@ -71,38 +69,33 @@ export default function LiveView() {
   const controls = runControlVisibility(liveState.kind)
 
   return (
-    <main className="dashboard">
-      <header className="topbar dashboard-topbar">
-        <div className="dashboard-title-cluster">
+    <main className="mx-auto w-full max-w-none px-4 py-4 md:px-6">
+      <header className="mb-4 grid gap-3">
+        <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <h1>TradingZero Dashboard</h1>
+            <h1 className="font-display text-2xl tracking-wide text-foreground">TradingZero Dashboard</h1>
             <LiveViewStateBadge state={liveState} />
           </div>
-          <p className="panel-subtle">Training stream, checkpoints, and live portfolio telemetry.</p>
-        </div>
-        <DashboardModeTabs />
-        <div className="dashboard-time-control">
-          <Button onClick={toggleTimeMode} variant="outline" size="sm" type="button">
-            Time: {timeMode.toUpperCase()}
-          </Button>
+          <p className="text-sm text-muted-foreground">Training stream, checkpoints, and live portfolio telemetry.</p>
         </div>
       </header>
 
       <KpiStrip event={stream} stepBatch={stepBatch} />
 
-      <section className="mb-3">
-        {liveState.kind === 'running' ? (
-          <div className="rounded-xl border border-border/60 bg-card p-2">
-            <PriceChart event={stream} priceBuffer={priceBuffer} height={460} />
-          </div>
-        ) : (
-          <ChartStateHelper state={liveState} />
-        )}
+      <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
+        <div>
+          {liveState.kind === 'running' ? (
+            <div className="rounded-xl border border-border/60 bg-card p-2">
+              <PriceChart event={stream} priceBuffer={priceBuffer} height={460} />
+            </div>
+          ) : (
+            <ChartStateHelper state={liveState} />
+          )}
+        </div>
+        <PromotionCheckPanel event={stream} />
       </section>
 
-      <section className="grid panels">
-        <ActionDistributionPanel event={stream} />
-        <LastActionPanel event={stream} />
+      <section className="mt-3 grid gap-3 xl:grid-cols-3">
         <article className="card panel">
           <h2>Run Status</h2>
           <p>Run ID: {statusQuery.data?.run_id ?? '-'}</p>
@@ -148,18 +141,9 @@ export default function LiveView() {
           )}
           {retryMutation.isError && <p className="loss">Retry blocked or failed.</p>}
         </article>
-      </section>
 
-      <section className="grid analytics-section">
-        <article className="card panel analytics-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Profit vs Loss Steps</h2>
-              <p className="panel-subtle">Live distribution across every streamed step in the current run.</p>
-            </div>
-          </div>
-          <AnalyticsChart distribution={streamState.profitLossDistribution} />
-        </article>
+        <LastActionPanel event={stream} />
+        <ActionDistributionPanel event={stream} />
       </section>
     </main>
   )

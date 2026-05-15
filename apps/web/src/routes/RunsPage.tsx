@@ -18,9 +18,9 @@ export default function RunsPage() {
   })
 
   return (
-    <main className="dashboard">
-      <header className="topbar">
-        <h1>Runs</h1>
+    <main className="mx-auto w-full max-w-none px-4 py-4 md:px-6">
+      <header className="mb-4">
+        <h1 className="font-display text-2xl tracking-wide text-foreground">Runs</h1>
       </header>
       <section className="grid history-grid">
         <article className="card panel">
@@ -32,6 +32,19 @@ export default function RunsPage() {
                   <p>{run.run_id}</p>
                   <p>{run.state.toUpperCase()}</p>
                   <p>{formatTimestamp(run.started_at, timeMode)}</p>
+                  {run.evaluation_summary ? (
+                    <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                      <p>
+                        Promotion: <span className="font-medium text-foreground">{run.evaluation_summary.latest_promotion_outcome === 'promoted' ? 'Promoted' : 'Not promoted'}</span>
+                      </p>
+                      <p>
+                        Best Eval Sharpe:{' '}
+                        <span className="font-medium text-foreground">
+                          {run.evaluation_summary.best_evaluation_sharpe.toFixed(4)}
+                        </span>
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

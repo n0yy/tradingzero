@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 
@@ -50,13 +50,21 @@ function setRunStatus(next: Partial<typeof runStatusMock.current>) {
   runStatusMock.current = { ...runStatusMock.current, ...next }
 }
 
+const runsHistoryMock = vi.hoisted(() => ({
+  current: { runs: [] as Array<Record<string, unknown>> },
+}))
+
+function setRunsHistory(runs: Array<Record<string, unknown>>) {
+  runsHistoryMock.current = { runs }
+}
+
 globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
   const url = String(input)
   if (url.endsWith('/runs/status')) {
     return new Response(JSON.stringify(runStatusMock.current), { status: 200 })
   }
   if (url.endsWith('/runs')) {
-    return new Response(JSON.stringify({ runs: [] }), { status: 200 })
+    return new Response(JSON.stringify(runsHistoryMock.current), { status: 200 })
   }
   if (url.includes('/runs/') && url.endsWith('/errors')) {
     return new Response(JSON.stringify({ errors: [] }), { status: 200 })
@@ -116,10 +124,6 @@ vi.mock('./components/PriceChart', () => ({
   default: () => <div>Price Chart Mock</div>,
 }))
 
-vi.mock('./components/AnalyticsChart', () => ({
-  default: () => <div>Analytics Chart Mock</div>,
-}))
-
 function renderApp(initialPath: string = '/') {
   const qc = new QueryClient()
   render(
@@ -135,6 +139,7 @@ describe('dashboard', () => {
   beforeEach(() => {
     setStream({ event: null, connected: true, profitLossDistribution: { profit: 0, loss: 0, flat: 0 } })
     setRunStatus({ state: 'idle', run_id: null, started_at: null, finished_at: null, error: null })
+    setRunsHistory([])
   })
 
   it('formats usd with 2 decimals and separators', () => {
@@ -144,27 +149,87 @@ describe('dashboard', () => {
   it('renders key metrics header', () => {
     renderApp()
     expect(screen.getByText('TradingZero Dashboard')).toBeInTheDocument()
-    expect(screen.getByText('Sharpe')).toBeInTheDocument()
-    expect(screen.getByText('Best Sharpe')).toBeInTheDocument()
     expect(screen.getByText('Balance')).toBeInTheDocument()
     expect(screen.getByText('PnL')).toBeInTheDocument()
+    expect(screen.getByText('Trade Win Rate')).toBeInTheDocument()
+    expect(screen.getByText('Progress')).toBeInTheDocument()
+    expect(screen.getByText('Promotion Check')).toBeInTheDocument()
     expect(screen.getByTestId('start-run')).toBeInTheDocument()
   })
 
-  it('renders side nav with Live View, Config, Runs, Errors at /', () => {
+  it('renders promotion decision summary and reason with checklist values', () => {
+    setStream({
+      event: {
+        generation: 9,
+        training_sharpe: 0.77,
+        evaluation_sharpe: 0.95,
+        best_evaluation_sharpe: 1.1,
+        promoted: false,
+        evaluation_executed_trade_count: 8,
+        evaluation_sell_realized_exit_count: 3,
+        promotion_gate_reasons: ['Evaluation Sharpe 0.9500 did not beat target 1.0500.'],
+        promotion_gate_checks: [
+          {
+            name: 'evaluation_sharpe_threshold',
+            passed: false,
+            actual: 0.95,
+            target: 1.05,
+            message: 'Evaluation Sharpe threshold',
+          },
+        ],
+        balance: 10000,
+        pnl: 10,
+        trade_win_rate: 0.6,
+        progress: 0.4,
+        transaction_distribution: { buy: 1, sell: 1, no_transaction: 1 },
+        cumulative_buys: 1,
+        cumulative_sells: 1,
+        winning_trades: 1,
+        losing_trades: 1,
+        flat_trades: 0,
+        last_transaction: null,
+      },
+      connected: true,
+    })
+    renderApp('/')
+    expect(screen.getByText('Not promoted')).toBeInTheDocument()
+    expect(screen.getByTestId('promotion-summary')).toHaveTextContent('did not beat target')
+    expect(screen.getByText('Evaluation Sharpe threshold')).toBeInTheDocument()
+    expect(screen.getByTestId('promotion-evaluation-sharpe')).toHaveTextContent('0.9500')
+    expect(screen.getByTestId('promotion-best-evaluation-sharpe')).toHaveTextContent('1.1000')
+    expect(screen.getByTestId('promotion-executed-trades')).toHaveTextContent('8')
+    expect(screen.getByTestId('promotion-sell-exits')).toHaveTextContent('3')
+  })
+
+  it('keeps per-anchor detail collapsed by default and expands on demand', () => {
+    renderApp('/')
+    expect(screen.queryByTestId('promotion-anchor-label')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /per-anchor detail/i }))
+    expect(screen.getByTestId('promotion-anchor-label')).toBeInTheDocument()
+  })
+
+  it('renders side nav with Live View, Battle, Config, Runs, Errors at /', () => {
     renderApp('/')
     const nav = screen.getByRole('navigation', { name: /primary/i })
     expect(nav).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /live view/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /battle/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^config$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^runs$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^errors$/i })).toBeInTheDocument()
   })
 
-  it('renders Training and Battle tabs in the dashboard header', () => {
+  it('renders sidebar footer utility rows for time mode and theme placeholder', () => {
     renderApp('/')
-    expect(screen.getByRole('tab', { name: /training/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /battle/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^time$/i })).toBeInTheDocument()
+    expect(screen.getByText('UTC')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^theme$/i })).toBeDisabled()
+    expect(screen.getByText('Dark/Light')).toBeInTheDocument()
+  })
+
+  it('renders sidebar trigger for collapsible shell control', () => {
+    renderApp('/')
+    expect(screen.getByTestId('sidebar-trigger')).toBeInTheDocument()
   })
 
   it('marks Live View as the active nav target at /', () => {
@@ -215,6 +280,27 @@ describe('dashboard', () => {
     expect(await screen.findByRole('heading', { name: /run history/i })).toBeInTheDocument()
   })
 
+  it('renders compact evaluation summary labels in runs history when available', async () => {
+    setRunsHistory([
+      {
+        run_id: 'run-123',
+        state: 'done',
+        started_at: '2026-05-15T10:00:00Z',
+        finished_at: '2026-05-15T10:10:00Z',
+        error: null,
+        evaluation_summary: {
+          latest_promotion_outcome: 'promoted',
+          best_evaluation_sharpe: 1.23,
+        },
+      },
+    ])
+    renderApp('/runs')
+    expect(await screen.findByText(/promotion:/i)).toBeInTheDocument()
+    expect(screen.getByText(/best eval sharpe:/i)).toBeInTheDocument()
+    expect(screen.getByText(/promoted/i)).toBeInTheDocument()
+    expect(screen.getByText(/1\.2300/i)).toBeInTheDocument()
+  })
+
   it('renders Error Explorer on /errors', async () => {
     renderApp('/errors')
     expect(await screen.findByRole('heading', { name: /error explorer/i })).toBeInTheDocument()
@@ -261,8 +347,9 @@ describe('dashboard', () => {
     setStream({
       event: {
         generation: 1,
-        current_sharpe: 0.1,
-        best_sharpe: 0.2,
+        training_sharpe: 0.1,
+        evaluation_sharpe: 0.1,
+        best_evaluation_sharpe: 0.2,
         balance: 10000,
         pnl: 50,
         trade_win_rate: 0.6,

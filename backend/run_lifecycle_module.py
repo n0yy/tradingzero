@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from time import sleep
 from typing import Callable
 import json
 import yaml
 
+from backend.evaluation_spec import RunEvaluationPlan
 from backend.lifecycle import ActiveRunError, NoActiveRunError, RunController, RunStatus
 from backend.persistence.repository import Repository
 from backend.runners import RunnerAdapter
@@ -19,7 +21,8 @@ class RunLifecycleModule:
     session_factory: object
     config_path: str = 'config.yaml'
     retention_days: int = 90
-    runner_factory_with_resume: Callable[[str | None], RunnerAdapter] | None = None
+    runner_factory_builder: Callable[[str | None, RunEvaluationPlan | None], RunnerAdapter] | None = None
+    evaluation_plan_factory: Callable[[dict], RunEvaluationPlan] | None = None
 
     def _default_safe_config(self) -> dict:
         return {
@@ -82,24 +85,48 @@ class RunLifecycleModule:
             'started_at': status.started_at,
             'finished_at': status.finished_at,
             'error': status.error,
+            'evaluation_spec': None,
+        }
+
+    def _parse_evaluation_spec(self, payload: str | None) -> dict | None:
+        if payload is None:
+            return None
+        return json.loads(payload)
+
+    def _run_to_payload(self, run, evaluation_summary: dict | None = None) -> dict[str, str | None]:
+        return {
+            'run_id': run.id,
+            'state': run.state,
+            'started_at': run.started_at.isoformat() if run.started_at else None,
+            'finished_at': run.finished_at.isoformat() if run.finished_at else None,
+            'error': run.error_message,
+            'evaluation_spec': self._parse_evaluation_spec(run.evaluation_spec_payload),
+            'evaluation_summary': evaluation_summary,
         }
 
     def status(self) -> dict[str, str | None]:
         status = self.controller.status()
         if status.run_id is not None:
-            return self._to_payload(status)
+            payload = self._to_payload(status)
+            latest = None
+            for _ in range(10):
+                with self.session_factory() as session:
+                    candidate = Repository(session).latest_run()
+                    if candidate is not None and candidate.id == status.run_id:
+                        latest = candidate
+                        if status.state not in {'done', 'error'} or candidate.state == status.state:
+                            break
+                if status.state in {'done', 'error'}:
+                    sleep(0.01)
+            if latest is not None and latest.id == status.run_id:
+                payload['evaluation_spec'] = self._parse_evaluation_spec(latest.evaluation_spec_payload)
+            return payload
 
         with self.session_factory() as session:
             latest = Repository(session).latest_run()
             if latest is None:
                 return self._to_payload(status)
-            return {
-                'state': latest.state,
-                'run_id': latest.id,
-                'started_at': latest.started_at.isoformat() if latest.started_at else None,
-                'finished_at': latest.finished_at.isoformat() if latest.finished_at else None,
-                'error': latest.error_message,
-            }
+            return self._run_to_payload(latest)
 
     def mark_interrupted_runs(self) -> None:
         with self.session_factory() as session:
@@ -112,9 +139,10 @@ class RunLifecycleModule:
     ) -> dict[str, str | None]:
         config_obj = self._active_config_payload()
         config_payload = json.dumps(config_obj, sort_keys=True)
+        evaluation_plan = self.evaluation_plan_factory(config_obj) if self.evaluation_plan_factory is not None else None
         runner_factory_override = None
-        if retry_from is not None and self.runner_factory_with_resume is not None:
-            runner_factory_override = lambda: self.runner_factory_with_resume(retry_from)
+        if self.runner_factory_builder is not None:
+            runner_factory_override = lambda: self.runner_factory_builder(retry_from, evaluation_plan)
         try:
             status = self.controller.start(runner_factory_override=runner_factory_override)
         except ActiveRunError:
@@ -123,7 +151,12 @@ class RunLifecycleModule:
         with self.session_factory() as session:
             repo = Repository(session)
             revision = repo.upsert_config_revision(config_payload)
-            repo.create_run(status.run_id or datetime.now(UTC).isoformat(), status.state, revision.id)
+            repo.create_run(
+                status.run_id or datetime.now(UTC).isoformat(),
+                status.state,
+                revision.id,
+                evaluation_spec=evaluation_plan.evaluation_spec if evaluation_plan is not None else None,
+            )
             if retry_from is None:
                 repo.add_event(status.run_id or '', 'running', 'run started')
             else:
@@ -131,7 +164,9 @@ class RunLifecycleModule:
             repo.prune_older_than_days(self.retention_days)
             session.commit()
 
-        return self._to_payload(status)
+        payload = self._to_payload(status)
+        payload['evaluation_spec'] = evaluation_plan.evaluation_spec if evaluation_plan is not None else None
+        return payload
 
     def stop(self) -> dict[str, str | None]:
         try:
@@ -186,17 +221,49 @@ class RunLifecycleModule:
 
     def list_runs(self) -> dict[str, list[dict[str, str | None]]]:
         with self.session_factory() as session:
-            runs = Repository(session).list_runs()
+            repo = Repository(session)
+            runs = repo.list_runs()
             return {
                 'runs': [
-                    {
-                        'run_id': run.id,
-                        'state': run.state,
-                        'started_at': run.started_at.isoformat() if run.started_at else None,
-                        'finished_at': run.finished_at.isoformat() if run.finished_at else None,
-                        'error': run.error_message,
-                    }
+                    self._run_to_payload(
+                        run,
+                        evaluation_summary=(
+                            {
+                                'latest_promotion_outcome': 'promoted' if latest_record.promoted else 'not_promoted',
+                                'best_evaluation_sharpe': latest_record.best_evaluation_sharpe,
+                            }
+                            if (latest_record := repo.latest_evaluation_record(run.id)) is not None
+                            else None
+                        ),
+                    )
                     for run in runs
+                ]
+            }
+
+    def persist_evaluation_record(self, run_id: str, payload: dict) -> None:
+        with self.session_factory() as session:
+            Repository(session).upsert_evaluation_record(run_id, payload)
+            session.commit()
+
+    def list_evaluation_records(self, run_id: str) -> dict[str, list[dict]]:
+        with self.session_factory() as session:
+            records = Repository(session).list_evaluation_records(run_id)
+            return {
+                'evaluations': [
+                    {
+                        'generation': record.generation,
+                        'training_sharpe': record.training_sharpe,
+                        'evaluation_sharpe': record.evaluation_sharpe,
+                        'best_evaluation_sharpe': record.best_evaluation_sharpe,
+                        'promoted': bool(record.promoted),
+                        'evaluation_executed_trade_count': record.evaluation_executed_trade_count,
+                        'evaluation_sell_realized_exit_count': record.evaluation_sell_realized_exit_count,
+                        'promotion_gate_reasons': json.loads(record.promotion_gate_reasons_payload),
+                        'promotion_gate_checks': json.loads(record.promotion_gate_checks_payload),
+                        'anchor_results': json.loads(record.anchor_results_payload),
+                        'created_at': record.created_at.isoformat(),
+                    }
+                    for record in records
                 ]
             }
 

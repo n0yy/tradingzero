@@ -17,8 +17,20 @@ export type ExecutedTrade = {
 
 export type TrainingUpdate = {
   generation: number
-  current_sharpe: number
-  best_sharpe: number
+  training_sharpe: number
+  evaluation_sharpe: number
+  best_evaluation_sharpe: number
+  promoted?: boolean
+  evaluation_executed_trade_count?: number
+  evaluation_sell_realized_exit_count?: number
+  promotion_gate_reasons?: string[]
+  promotion_gate_checks?: Array<{
+    name: string
+    passed: boolean
+    actual?: number | null
+    target?: number | null
+    message: string
+  }>
   balance: number
   pnl: number
   trade_win_rate: number
@@ -84,8 +96,14 @@ function classifyStepOutcome(data: StepBatch): keyof ProfitLossDistribution {
 function mergeStepIntoEvent(previous: TrainingUpdate | null, data: StepBatch): TrainingUpdate {
   return {
     generation: data.generation,
-    current_sharpe: previous?.current_sharpe ?? Number.NaN,
-    best_sharpe: previous?.best_sharpe ?? Number.NaN,
+    training_sharpe: previous?.training_sharpe ?? Number.NaN,
+    evaluation_sharpe: previous?.evaluation_sharpe ?? Number.NaN,
+    best_evaluation_sharpe: previous?.best_evaluation_sharpe ?? Number.NaN,
+    promoted: previous?.promoted,
+    evaluation_executed_trade_count: previous?.evaluation_executed_trade_count,
+    evaluation_sell_realized_exit_count: previous?.evaluation_sell_realized_exit_count,
+    promotion_gate_reasons: previous?.promotion_gate_reasons,
+    promotion_gate_checks: previous?.promotion_gate_checks,
     balance: data.balance,
     pnl: data.pnl,
     trade_win_rate: data.trade_win_rate,

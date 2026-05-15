@@ -4,8 +4,29 @@ from backend.event_mapper import map_step_batch_payload, map_training_payload
 def test_event_mapper_produces_typed_payload_with_last_transaction_fields():
     payload = {
         'generation': 3,
-        'current_sharpe': 1.23,
-        'best_sharpe': 1.45,
+        'training_sharpe': 0.91,
+        'evaluation_sharpe': 1.23,
+        'best_evaluation_sharpe': 1.45,
+        'promoted': False,
+        'evaluation_executed_trade_count': 6,
+        'evaluation_sell_realized_exit_count': 2,
+        'promotion_gate_reasons': ['Evaluation Sharpe 1.2300 did not beat target 1.5000.'],
+        'promotion_gate_checks': [
+            {
+                'name': 'evaluation_sharpe_threshold',
+                'passed': False,
+                'actual': 1.23,
+                'target': 1.5,
+                'message': 'Evaluation Sharpe 1.2300 did not beat target 1.5000.',
+            },
+            {
+                'name': 'executed_trade_count',
+                'passed': True,
+                'actual': 6,
+                'target': 4,
+                'message': 'Executed Trade count 6 met minimum 4.',
+            },
+        ],
         'final_balance': 10234.56,
         'pnl': 234.56,
         'initial_balance': 10000.0,
@@ -37,8 +58,15 @@ def test_event_mapper_produces_typed_payload_with_last_transaction_fields():
 
     assert event['type'] == 'training_update'
     data = event['data']
-    assert data['current_sharpe'] == 1.23
-    assert data['best_sharpe'] == 1.45
+    assert data['training_sharpe'] == 0.91
+    assert data['evaluation_sharpe'] == 1.23
+    assert data['best_evaluation_sharpe'] == 1.45
+    assert data['promoted'] is False
+    assert data['evaluation_executed_trade_count'] == 6
+    assert data['evaluation_sell_realized_exit_count'] == 2
+    assert data['promotion_gate_reasons'] == ['Evaluation Sharpe 1.2300 did not beat target 1.5000.']
+    assert data['promotion_gate_checks'][0]['name'] == 'evaluation_sharpe_threshold'
+    assert data['promotion_gate_checks'][0]['passed'] is False
     assert data['transaction_distribution']['buy'] == 4
     assert data['transaction_distribution']['no_transaction'] == 7
 

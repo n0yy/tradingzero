@@ -11,6 +11,7 @@ class RunStatusResponse(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
+    evaluation_spec: dict | None = None
 
 class ErrorDetail(BaseModel):
     code: str
@@ -42,9 +43,48 @@ class RunHistoryItem(BaseModel):
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
+    evaluation_spec: dict | None = None
+    evaluation_summary: dict | None = None
 
 class RunHistoryResponse(BaseModel):
     runs: list[RunHistoryItem]
+
+
+class PromotionGateCheckResponse(BaseModel):
+    name: str
+    passed: bool
+    actual: float | int | None = None
+    target: float | int | None = None
+    message: str
+
+
+class EvaluationAnchorResultResponse(BaseModel):
+    label: str
+    start_index: int | None = None
+    start_timestamp: str | None = None
+    evaluation_sharpe: float
+    executed_trade_count: int | None = None
+    sell_realized_exit_count: int | None = None
+    final_balance: float | None = None
+    pnl: float | None = None
+
+
+class RunEvaluationRecordItem(BaseModel):
+    generation: int
+    training_sharpe: float
+    evaluation_sharpe: float
+    best_evaluation_sharpe: float
+    promoted: bool
+    evaluation_executed_trade_count: int
+    evaluation_sell_realized_exit_count: int
+    promotion_gate_reasons: list[str]
+    promotion_gate_checks: list[PromotionGateCheckResponse]
+    anchor_results: list[EvaluationAnchorResultResponse]
+    created_at: str
+
+
+class RunEvaluationRecordListResponse(BaseModel):
+    evaluations: list[RunEvaluationRecordItem]
 
 class DataConfig(BaseModel):
     exchange: str = Field(min_length=1)

@@ -6,6 +6,7 @@ from threading import Event, Thread
 from typing import Callable, Protocol
 from datetime import UTC, datetime
 
+from backend.evaluation_spec import RunEvaluationPlan
 from backend.training_runtime import build_trainer_runtime
 
 
@@ -39,7 +40,7 @@ class InMemoryRunnerAdapter:
             return {'buy': 0, 'sell': 0, 'no_transaction': 0}
 
         balance = 10_000.0
-        best_sharpe = 0.0
+        best_evaluation_sharpe = 0.0
         cumulative_buys = 0
         cumulative_sells = 0
         winning_trades = 0
@@ -146,16 +147,18 @@ class InMemoryRunnerAdapter:
                     'timestamp': timestamp,
                 })
 
-            current_sharpe = math.sin(generation / 8.0) * 1.2 + self._rng.uniform(-0.1, 0.1)
-            best_sharpe = max(best_sharpe, current_sharpe)
+            training_sharpe = math.sin(generation / 9.0) * 0.9 + self._rng.uniform(-0.08, 0.08)
+            evaluation_sharpe = math.sin(generation / 8.0) * 1.2 + self._rng.uniform(-0.1, 0.1)
+            best_evaluation_sharpe = max(best_evaluation_sharpe, evaluation_sharpe)
             trade_win_rate = winning_trades / max(winning_trades + losing_trades + flat_trades, 1)
 
             self._on_update({
                 'kind': 'generation_update',
                 'generation': generation,
                 'total_generations': self._total_generations,
-                'current_sharpe': current_sharpe,
-                'best_sharpe': best_sharpe,
+                'training_sharpe': training_sharpe,
+                'evaluation_sharpe': evaluation_sharpe,
+                'best_evaluation_sharpe': best_evaluation_sharpe,
                 'final_balance': balance,
                 'initial_balance': gen_start_balance,
                 'pnl': balance - gen_start_balance,
@@ -185,10 +188,12 @@ class TrainerRunnerAdapter:
         resume: bool = True,
         resume_from: str | None = None,
         on_update: Callable[[dict], None] | None = None,
+        evaluation_plan: RunEvaluationPlan | None = None,
     ) -> None:
         self._config_path = config_path
         self._resume = resume
         self._resume_from = resume_from
+        self._evaluation_plan = evaluation_plan
         self._trainer = None
         self._stop_requested = False
         self._on_update = on_update
@@ -199,6 +204,7 @@ class TrainerRunnerAdapter:
             config_path=self._config_path,
             resume=self._resume,
             resume_from=self._resume_from,
+            evaluation_plan=self._evaluation_plan,
         )
         self._trainer = trainer
         self._start_forwarder()

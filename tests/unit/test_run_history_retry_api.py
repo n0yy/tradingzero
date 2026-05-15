@@ -5,6 +5,7 @@ import time
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
+from backend.persistence.db import build_engine, build_session_factory
 
 
 def test_runs_history_lists_latest_first(tmp_path: Path):
@@ -82,3 +83,44 @@ def test_retry_returns_conflict_when_checkpoint_missing(tmp_path: Path):
     res = client.post('/runs/retry')
     assert res.status_code == 409
     assert res.json()['detail']['error']['code'] == 'checkpoint_not_found'
+
+
+def test_runs_history_includes_compact_evaluation_summary_when_records_exist(tmp_path: Path):
+    db_url = f"sqlite:///{tmp_path / 'history-eval-summary.db'}"
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('self_play:\n  checkpoint_dir: agent/checkpoints\n', encoding='utf-8')
+
+    app = create_app(database_url=db_url, config_path=str(config_path), runner_mode='inmemory')
+    client = TestClient(app)
+
+    start = client.post('/runs/start')
+    assert start.status_code == 202
+    run_id = start.json()['run_id']
+    client.post('/runs/stop')
+
+    session_factory = build_session_factory(build_engine(db_url))
+    with session_factory() as session:
+        from backend.persistence.repository import Repository
+
+        Repository(session).upsert_evaluation_record(
+            run_id,
+            {
+                'generation': 3,
+                'training_sharpe': 0.72,
+                'evaluation_sharpe': 1.09,
+                'best_evaluation_sharpe': 1.17,
+                'promoted': True,
+                'evaluation_executed_trade_count': 9,
+                'evaluation_sell_realized_exit_count': 4,
+                'promotion_gate_reasons': ['pass'],
+                'promotion_gate_checks': [],
+                'anchor_results': [],
+            },
+        )
+        session.commit()
+
+    res = client.get('/runs')
+    assert res.status_code == 200
+    item = res.json()['runs'][0]
+    assert item['evaluation_summary']['latest_promotion_outcome'] == 'promoted'
+    assert item['evaluation_summary']['best_evaluation_sharpe'] == 1.17

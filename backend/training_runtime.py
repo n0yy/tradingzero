@@ -6,6 +6,7 @@ from queue import Queue
 import yaml
 from dotenv import load_dotenv
 
+from backend.evaluation_spec import RunEvaluationPlan, build_run_evaluation_plan
 from logger import logger
 
 
@@ -78,12 +79,19 @@ def build_trainer_runtime(
     config_path: str = 'config.yaml',
     resume: bool = True,
     resume_from: str | None = None,
+    evaluation_plan: RunEvaluationPlan | None = None,
 ):
     load_dotenv()
     config = load_config(config_path)
-    data = fetch_data(config)
-    env = build_env(config, data)
+    plan = evaluation_plan
+    if plan is None:
+        data = fetch_data(config)
+        plan = build_run_evaluation_plan(config=config, data=data)
+    env = build_env(config, plan.training_data)
     queue: Queue = Queue()
     checkpoint_dir = config['self_play']['checkpoint_dir']
     trainer = build_trainer(config, env, queue, checkpoint_dir, resume=resume, resume_from=resume_from)
+    trainer.evaluation_spec = plan.evaluation_spec
+    trainer.evaluation_data = plan.evaluation_data
+    trainer.training_data = plan.training_data
     return trainer

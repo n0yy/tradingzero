@@ -60,7 +60,9 @@ def test_inmemory_runner_emits_training_updates_until_stopped():
     assert len(generation_updates) >= 2
     sample = generation_updates[0]
     assert 'generation' in sample
-    assert 'current_sharpe' in sample
+    assert 'training_sharpe' in sample
+    assert 'evaluation_sharpe' in sample
+    assert 'best_evaluation_sharpe' in sample
     assert 'final_balance' in sample
     assert 'transaction_distribution' in sample
     assert {'buy', 'sell', 'no_transaction'} <= set(sample['transaction_distribution'].keys())
@@ -103,4 +105,3 @@ def test_inmemory_runner_emits_step_batch_faster_than_generations():
         'equity_curve',
     ):
         assert key in sample
-

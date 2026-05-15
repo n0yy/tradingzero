@@ -351,8 +351,8 @@ class TUIApp(App):
     def _init_tiles(self) -> None:
         self.query_one("#tile-generation", MetricBox).set_value("Generation", "—")
         self.query_one("#tile-progress", MetricBox).set_value("Progress", "—")
-        self.query_one("#tile-sharpe", MetricBox).set_value("Sharpe", "—", "bold green")
-        self.query_one("#tile-best-sharpe", MetricBox).set_value("Best Sharpe", "—", "bold green")
+        self.query_one("#tile-sharpe", MetricBox).set_value("Eval Sharpe", "—", "bold green")
+        self.query_one("#tile-best-sharpe", MetricBox).set_value("Best Eval", "—", "bold green")
         self.query_one("#tile-balance", MetricBox).set_value("Balance", "—", "bold cyan")
         self.query_one("#tile-pnl", MetricBox).set_value("PnL", "—", "bold white")
         self.query_one("#tile-winrate", MetricBox).set_value("Trade Win Rate", "—", "bold white")
@@ -382,8 +382,9 @@ class TUIApp(App):
             self._promotions += 1
 
         generation = payload.get("generation", 0)
-        current_sharpe = payload.get("current_sharpe", 0.0)
-        best_sharpe = payload.get("best_sharpe", 0.0)
+        training_sharpe = payload.get("training_sharpe", payload.get("current_sharpe", 0.0))
+        evaluation_sharpe = payload.get("evaluation_sharpe", payload.get("current_sharpe", 0.0))
+        best_evaluation_sharpe = payload.get("best_evaluation_sharpe", payload.get("best_sharpe", 0.0))
         promoted = payload.get("promoted", False)
         total = payload.get("total_generations", self._total_generations) or generation
         final_balance = payload.get("final_balance", None)
@@ -396,7 +397,7 @@ class TUIApp(App):
             self._initial_balance = initial_balance
 
         progress_pct = f"{generation / total * 100:.1f}%" if total else "—"
-        sharpe_style = "bold green" if current_sharpe >= 0 else "bold red"
+        sharpe_style = "bold green" if evaluation_sharpe >= 0 else "bold red"
 
         self.query_one("#tile-generation", MetricBox).set_value(
             "Generation", f"{generation} / {total or '?'}"
@@ -405,10 +406,10 @@ class TUIApp(App):
             "Progress", progress_pct, "bold cyan"
         )
         self.query_one("#tile-sharpe", MetricBox).set_value(
-            "Sharpe", f"{current_sharpe:.4f}", sharpe_style
+            "Eval Sharpe", f"{evaluation_sharpe:.4f}", sharpe_style
         )
         self.query_one("#tile-best-sharpe", MetricBox).set_value(
-            "Best Sharpe", f"{best_sharpe:.4f}", "bold green"
+            "Best Eval", f"{best_evaluation_sharpe:.4f}", "bold green"
         )
 
         if final_balance is not None:
@@ -436,7 +437,7 @@ class TUIApp(App):
                 "Status", "TRAINING", "bold yellow"
             )
 
-        self.query_one("#chart", ChartPanel).add_point(current_sharpe)
+        self.query_one("#chart", ChartPanel).add_point(evaluation_sharpe)
 
         action_counts = payload.get("action_counts", None)
         if action_counts is not None:
@@ -455,7 +456,7 @@ class TUIApp(App):
                 actions=action_series,
             )
 
-        sharpe_color = "green" if current_sharpe >= 0 else "red"
+        sharpe_color = "green" if evaluation_sharpe >= 0 else "red"
         pnl_log = ""
         if pnl is not None:
             pnl_color = "green" if pnl >= 0 else "red"
@@ -466,8 +467,9 @@ class TUIApp(App):
             trade_win_log = f" | trade_win={trade_win_rate * 100:.0f}%"
         msg = (
             f"[cyan]Gen {generation}[/cyan]"
-            f" | sharpe=[{sharpe_color}]{current_sharpe:.4f}[/{sharpe_color}]"
-            f" | best=[green]{best_sharpe:.4f}[/green]"
+            f" | train=[cyan]{training_sharpe:.4f}[/cyan]"
+            f" | eval=[{sharpe_color}]{evaluation_sharpe:.4f}[/{sharpe_color}]"
+            f" | best_eval=[green]{best_evaluation_sharpe:.4f}[/green]"
             f"{pnl_log}"
             f"{trade_win_log}"
         )

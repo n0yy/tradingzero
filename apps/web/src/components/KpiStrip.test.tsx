@@ -4,10 +4,8 @@ import { render, screen } from '@testing-library/react'
 import { KpiStrip } from './KpiStrip'
 
 describe('KpiStrip', () => {
-  it('renders all 6 KPI labels', () => {
+  it('renders live-only KPI labels', () => {
     render(<KpiStrip event={null} />)
-    expect(screen.getByText('Sharpe')).toBeInTheDocument()
-    expect(screen.getByText('Best Sharpe')).toBeInTheDocument()
     expect(screen.getByText('Balance')).toBeInTheDocument()
     expect(screen.getByText('PnL')).toBeInTheDocument()
     expect(screen.getByText('Trade Win Rate')).toBeInTheDocument()
@@ -16,9 +14,6 @@ describe('KpiStrip', () => {
 
   it('renders em-dash placeholders when event is null', () => {
     render(<KpiStrip event={null} />)
-    const sharpeValue = screen.getByTestId('kpi-sharpe')
-    expect(sharpeValue).toHaveTextContent('—')
-    expect(screen.getByTestId('kpi-best-sharpe')).toHaveTextContent('—')
     expect(screen.getByTestId('kpi-balance')).toHaveTextContent('—')
     expect(screen.getByTestId('kpi-pnl')).toHaveTextContent('—')
     expect(screen.getByTestId('kpi-trade-win-rate')).toHaveTextContent('—')
@@ -30,8 +25,9 @@ describe('KpiStrip', () => {
       <KpiStrip
         event={{
           generation: 5,
-          current_sharpe: 1.2345,
-          best_sharpe: 1.5,
+          training_sharpe: 0.9876,
+          evaluation_sharpe: 1.2345,
+          best_evaluation_sharpe: 1.5,
           balance: 12500,
           pnl: 250.5,
           trade_win_rate: 0.6,
@@ -59,8 +55,6 @@ describe('KpiStrip', () => {
         }}
       />,
     )
-    expect(screen.getByTestId('kpi-sharpe')).toHaveTextContent('1.2345')
-    expect(screen.getByTestId('kpi-best-sharpe')).toHaveTextContent('1.5000')
     expect(screen.getByTestId('kpi-balance')).toHaveTextContent('$12,500.00')
     expect(screen.getByTestId('kpi-pnl')).toHaveTextContent('+$250.50')
     expect(screen.getByTestId('kpi-trade-win-rate')).toHaveTextContent('60.00%')
@@ -72,8 +66,9 @@ describe('KpiStrip', () => {
       <KpiStrip
         event={{
           generation: 1,
-          current_sharpe: 0,
-          best_sharpe: 0,
+          training_sharpe: 0,
+          evaluation_sharpe: 0,
+          best_evaluation_sharpe: 0,
           balance: 9500,
           pnl: -500,
           trade_win_rate: 0,

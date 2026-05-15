@@ -21,10 +21,24 @@ class ExecutedTrade(BaseModel):
     unrealized_pnl_after: float
 
 
+class PromotionGateCheck(BaseModel):
+    name: str
+    passed: bool
+    actual: float | int | None = None
+    target: float | int | None = None
+    message: str
+
+
 class TrainingUpdateData(BaseModel):
     generation: int
-    current_sharpe: float
-    best_sharpe: float
+    training_sharpe: float
+    evaluation_sharpe: float
+    best_evaluation_sharpe: float
+    promoted: bool
+    evaluation_executed_trade_count: int
+    evaluation_sell_realized_exit_count: int
+    promotion_gate_reasons: list[str]
+    promotion_gate_checks: list[PromotionGateCheck]
     balance: float
     pnl: float
     trade_win_rate: float
@@ -115,8 +129,25 @@ def map_training_payload(payload: dict) -> dict:
         type='training_update',
         data=TrainingUpdateData(
             generation=generation,
-            current_sharpe=float(payload.get('current_sharpe', 0.0)),
-            best_sharpe=float(payload.get('best_sharpe', 0.0)),
+            training_sharpe=float(payload.get('training_sharpe', payload.get('current_sharpe', 0.0))),
+            evaluation_sharpe=float(payload.get('evaluation_sharpe', payload.get('current_sharpe', 0.0))),
+            best_evaluation_sharpe=float(
+                payload.get('best_evaluation_sharpe', payload.get('best_sharpe', 0.0))
+            ),
+            promoted=bool(payload.get('promoted', False)),
+            evaluation_executed_trade_count=int(payload.get('evaluation_executed_trade_count', 0)),
+            evaluation_sell_realized_exit_count=int(payload.get('evaluation_sell_realized_exit_count', 0)),
+            promotion_gate_reasons=[str(item) for item in (payload.get('promotion_gate_reasons') or [])],
+            promotion_gate_checks=[
+                PromotionGateCheck(
+                    name=str(item.get('name', 'unknown')),
+                    passed=bool(item.get('passed', False)),
+                    actual=item.get('actual'),
+                    target=item.get('target'),
+                    message=str(item.get('message', '')),
+                )
+                for item in (payload.get('promotion_gate_checks') or [])
+            ],
             balance=float(payload.get('final_balance', 0.0)),
             pnl=float(payload.get('pnl', 0.0)),
             trade_win_rate=float(payload.get('trade_win_rate', payload.get('win_rate', 0.0))),

@@ -82,7 +82,28 @@ def test_promotion_triggers_when_sharpe_improves(tmp_path, mocker):
         batch_size=32,
     )
     # gen 1: sets baseline=1.0, gen 2: 2.0 - 1.0 = 1.0 >= 0.05 → promote
-    mocker.patch.object(trainer, "_evaluate", side_effect=[{"sharpe": 1.0, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}, {"sharpe": 2.0, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}])
+    mocker.patch.object(
+        trainer,
+        "_evaluate",
+        side_effect=[
+            {
+                "sharpe": 1.0,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 6,
+                "sell_realized_exit_count": 3,
+            },
+            {
+                "sharpe": 2.0,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 8,
+                "sell_realized_exit_count": 4,
+            },
+        ],
+    )
     trainer.run()
     assert trainer.best_sharpe == 2.0
     assert (tmp_path / "best.zip").exists()
@@ -101,7 +122,6 @@ def test_promotion_does_not_trigger_below_threshold(tmp_path, mocker):
         batch_size=32,
     )
     # gen 1 sets baseline=0.1, gen 2: 0.15 - 0.1 = 0.05 < 0.5 threshold → no promote
-    mocker.patch.object(trainer, "_evaluate", side_effect=[{"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}, {"sharpe": 0.15, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}])
     trainer = Trainer(
         env=env,
         checkpoint_dir=str(tmp_path),
@@ -110,8 +130,69 @@ def test_promotion_does_not_trigger_below_threshold(tmp_path, mocker):
         n_steps=64,
         batch_size=32,
     )
-    mocker.patch.object(trainer, "_evaluate", side_effect=[{"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}, {"sharpe": 0.15, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0}])
+    mocker.patch.object(
+        trainer,
+        "_evaluate",
+        side_effect=[
+            {
+                "sharpe": 0.1,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 6,
+                "sell_realized_exit_count": 3,
+            },
+            {
+                "sharpe": 0.15,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 6,
+                "sell_realized_exit_count": 3,
+            },
+        ],
+    )
     trainer.run()
+    assert not (tmp_path / "best.zip").exists()
+
+
+def test_promotion_does_not_trigger_when_activity_evidence_is_too_low(tmp_path, mocker):
+    from env.crypto_env import CryptoEnv
+    from agent.trainer import Trainer
+
+    env = CryptoEnv(data=make_mock_data(), window_size=60, episode_length=50)
+    trainer = Trainer(
+        env=env,
+        checkpoint_dir=str(tmp_path),
+        total_generations=2,
+        promote_threshold=0.05,
+        n_steps=64,
+        batch_size=32,
+    )
+    mocker.patch.object(
+        trainer,
+        "_evaluate",
+        side_effect=[
+            {
+                "sharpe": 1.0,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 6,
+                "sell_realized_exit_count": 3,
+            },
+            {
+                "sharpe": 2.0,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 1,
+                "sell_realized_exit_count": 0,
+            },
+        ],
+    )
+    trainer.run()
+    assert trainer.best_sharpe == 1.0
     assert not (tmp_path / "best.zip").exists()
 
 
@@ -130,7 +211,18 @@ def test_update_queue_receives_generation_payload(tmp_path, mocker):
         batch_size=32,
         update_queue=queue,
     )
-    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
+    mocker.patch.object(
+        trainer,
+        "_evaluate",
+        return_value={
+            "sharpe": 0.1,
+            "final_balance": 10000.0,
+            "pnl": 0.0,
+            "initial_balance": 10000.0,
+            "executed_trade_count": 6,
+            "sell_realized_exit_count": 3,
+        },
+    )
     trainer.run()
     payloads = []
     while not queue.empty():
@@ -139,9 +231,112 @@ def test_update_queue_receives_generation_payload(tmp_path, mocker):
     assert len(generation_payloads) == 2
     payload = generation_payloads[0]
     assert "generation" in payload
-    assert "current_sharpe" in payload
-    assert "best_sharpe" in payload
+    assert "training_sharpe" in payload
+    assert "evaluation_sharpe" in payload
+    assert "best_evaluation_sharpe" in payload
+    assert "evaluation_executed_trade_count" in payload
+    assert "evaluation_sell_realized_exit_count" in payload
+    assert "promotion_gate_checks" in payload
+    assert "promotion_gate_reasons" in payload
+    assert "anchor_results" in payload
     assert any(payload.get("kind") == "step_batch" for payload in payloads)
+
+
+def test_promotion_payload_reports_activity_gate_failures(tmp_path, mocker):
+    from queue import Queue
+    from env.crypto_env import CryptoEnv
+    from agent.trainer import Trainer
+
+    env = CryptoEnv(data=make_mock_data(), window_size=60, episode_length=50)
+    queue = Queue()
+    trainer = Trainer(
+        env=env,
+        checkpoint_dir=str(tmp_path),
+        total_generations=2,
+        promote_threshold=0.05,
+        n_steps=64,
+        batch_size=32,
+        update_queue=queue,
+    )
+    mocker.patch.object(
+        trainer,
+        "_evaluate",
+        side_effect=[
+            {
+                "sharpe": 1.0,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 6,
+                "sell_realized_exit_count": 3,
+            },
+            {
+                "sharpe": 1.5,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 1,
+                "sell_realized_exit_count": 0,
+            },
+        ],
+    )
+    trainer.run()
+
+    generation_payloads = []
+    while not queue.empty():
+        candidate = queue.get()
+        if candidate.get("kind") != "step_batch":
+            generation_payloads.append(candidate)
+
+    final_payload = generation_payloads[-1]
+    assert final_payload["promoted"] is False
+    assert final_payload["evaluation_executed_trade_count"] == 1
+    assert final_payload["evaluation_sell_realized_exit_count"] == 0
+    assert any("Executed Trade count 1 was below minimum" in reason for reason in final_payload["promotion_gate_reasons"])
+    assert any("SELL realized exits 0 were below minimum" in reason for reason in final_payload["promotion_gate_reasons"])
+
+
+def test_promotion_logs_decision_and_gate_reasons(tmp_path, mocker):
+    from env.crypto_env import CryptoEnv
+    from agent.trainer import Trainer
+
+    env = CryptoEnv(data=make_mock_data(), window_size=60, episode_length=50)
+    trainer = Trainer(
+        env=env,
+        checkpoint_dir=str(tmp_path),
+        total_generations=2,
+        promote_threshold=0.05,
+        n_steps=64,
+        batch_size=32,
+    )
+    mock_logger = mocker.patch("agent.trainer.logger")
+    mocker.patch.object(
+        trainer,
+        "_evaluate",
+        side_effect=[
+            {
+                "sharpe": 1.0,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 6,
+                "sell_realized_exit_count": 3,
+            },
+            {
+                "sharpe": 1.5,
+                "final_balance": 10000.0,
+                "pnl": 0.0,
+                "initial_balance": 10000.0,
+                "executed_trade_count": 1,
+                "sell_realized_exit_count": 0,
+            },
+        ],
+    )
+    trainer.run()
+
+    logged_messages = [" ".join(str(arg) for arg in call.args) for call in mock_logger.info.call_args_list]
+    assert any("Gate [FAIL] executed_trade_count" in message for message in logged_messages)
+    assert any("Promotion decision: NOT PROMOTED" in message for message in logged_messages)
 
 
 # --- Issue #10: action metrics & trade win rate ---

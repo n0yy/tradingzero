@@ -68,9 +68,9 @@ export default function ConfigPage() {
   })
 
   return (
-    <main className="dashboard">
-      <header className="topbar">
-        <h1>Config</h1>
+    <main className="mx-auto w-full max-w-none px-4 py-4 md:px-6">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <h1 className="font-display text-2xl tracking-wide text-foreground">Config</h1>
         <p className="text-xs text-muted-foreground">
           Active version: {activeConfigQuery.data?.version ?? '—'} · Updated{' '}
           {formatTimestamp(activeConfigQuery.data?.created_at ?? null, timeMode)}

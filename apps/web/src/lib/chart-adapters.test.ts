@@ -12,8 +12,9 @@ import type { TrainingUpdate } from '../hooks/useTrainingStream'
 
 const fakeUpdate = (overrides: Partial<TrainingUpdate> = {}): TrainingUpdate => ({
   generation: 1,
-  current_sharpe: 0.1,
-  best_sharpe: 0.2,
+  training_sharpe: 0.1,
+  evaluation_sharpe: 0.1,
+  best_evaluation_sharpe: 0.2,
   balance: 10000,
   pnl: 0,
   trade_win_rate: 0.5,

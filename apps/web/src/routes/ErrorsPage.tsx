@@ -30,9 +30,9 @@ export default function ErrorsPage() {
   })
 
   return (
-    <main className="dashboard">
-      <header className="topbar">
-        <h1>Errors</h1>
+    <main className="mx-auto w-full max-w-none px-4 py-4 md:px-6">
+      <header className="mb-4">
+        <h1 className="font-display text-2xl tracking-wide text-foreground">Errors</h1>
       </header>
       <section className="grid history-grid">
         <article className="card panel">

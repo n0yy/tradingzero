@@ -29,7 +29,7 @@ def test_wandb_init_called_on_run(tmp_path, mocker):
         batch_size=32,
         wandb_project="test_project",
     )
-    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0, "executed_trade_count": 6, "sell_realized_exit_count": 3})
     trainer.run()
 
     mock_wandb.init.assert_called_once()
@@ -54,15 +54,18 @@ def test_wandb_log_called_per_generation(tmp_path, mocker):
         batch_size=32,
         wandb_project="test_project",
     )
-    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0, "executed_trade_count": 6, "sell_realized_exit_count": 3})
     trainer.run()
 
     assert mock_wandb.log.call_count == 3
     logged = mock_wandb.log.call_args_list[0].args[0]
     assert "generation" in logged
-    assert "current_sharpe" in logged
-    assert "best_sharpe" in logged
+    assert "training_sharpe" in logged
+    assert "evaluation_sharpe" in logged
+    assert "best_evaluation_sharpe" in logged
     assert "promoted" in logged
+    assert "evaluation_executed_trade_count" in logged
+    assert "evaluation_sell_realized_exit_count" in logged
 
 
 def test_wandb_finish_called_after_run(tmp_path, mocker):
@@ -79,7 +82,7 @@ def test_wandb_finish_called_after_run(tmp_path, mocker):
         batch_size=32,
         wandb_project="test_project",
     )
-    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0, "executed_trade_count": 6, "sell_realized_exit_count": 3})
     trainer.run()
 
     mock_wandb.finish.assert_called_once()
@@ -99,7 +102,7 @@ def test_wandb_disabled_when_no_project(tmp_path, mocker):
         batch_size=32,
         wandb_project=None,
     )
-    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0})
+    mocker.patch.object(trainer, "_evaluate", return_value={"sharpe": 0.1, "final_balance": 10000.0, "pnl": 0.0, "initial_balance": 10000.0, "executed_trade_count": 6, "sell_realized_exit_count": 3})
     trainer.run()
 
     mock_wandb.init.assert_not_called()

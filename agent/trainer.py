@@ -18,6 +18,22 @@ def _empty_trade_outcomes() -> dict[str, int]:
     return {"winning": 0, "losing": 0, "flat": 0}
 
 
+def _promotion_check(
+    name: str,
+    passed: bool,
+    actual: float | int | None,
+    target: float | int | None,
+    message: str,
+) -> dict[str, float | int | str | bool | None]:
+    return {
+        "name": name,
+        "passed": passed,
+        "actual": actual,
+        "target": target,
+        "message": message,
+    }
+
+
 def _transaction_outcome_code(value: str) -> int:
     if value == "BUY":
         return 1
@@ -58,6 +74,8 @@ class Trainer:
         clip_range: float = 0.1,
         promote_threshold: float = 0.05,
         checkpoint_interval: int = 10,
+        min_executed_trades_for_promotion: int = 4,
+        min_sell_exits_for_promotion: int = 2,
         update_queue: Optional[Queue] = None,
         wandb_project: Optional[str] = None,
         resume: bool = True,
@@ -73,6 +91,8 @@ class Trainer:
         self.clip_range = clip_range
         self.promote_threshold = promote_threshold
         self.checkpoint_interval = checkpoint_interval
+        self.min_executed_trades_for_promotion = min_executed_trades_for_promotion
+        self.min_sell_exits_for_promotion = min_sell_exits_for_promotion
         self.update_queue = update_queue
         self.wandb_project = wandb_project
 
@@ -108,6 +128,8 @@ class Trainer:
         transaction_distribution = _empty_transaction_distribution()
         price_series: list[float] = []
         transaction_outcome_series: list[int] = []
+        anchor_results: list[dict] = []
+        anchor_specs = list(getattr(self, "evaluation_spec", {}).get("evaluation_anchors", []))
 
         for ep in range(n_eval_episodes):
             if self._stop:
@@ -118,6 +140,7 @@ class Trainer:
             last_balance = self.env.initial_balance
             ep_prices: list[float] = []
             ep_outcomes: list[int] = []
+            episode_distribution = _empty_transaction_distribution()
             while not done:
                 if self._stop:
                     break
@@ -129,16 +152,32 @@ class Trainer:
                 transaction_outcome = str(info.get("transaction_outcome", "NO_TRANSACTION"))
                 if transaction_outcome == "BUY":
                     transaction_distribution["buy"] += 1
+                    episode_distribution["buy"] += 1
                 elif transaction_outcome == "SELL":
                     transaction_distribution["sell"] += 1
+                    episode_distribution["sell"] += 1
                 else:
                     transaction_distribution["no_transaction"] += 1
+                    episode_distribution["no_transaction"] += 1
 
                 ep_prices.append(float(info.get("price", info.get("next_price", last_balance))))
                 ep_outcomes.append(_transaction_outcome_code(transaction_outcome))
 
             episode_rewards.append(total_reward)
             episode_final_balances.append(last_balance)
+            anchor_spec = anchor_specs[ep] if ep < len(anchor_specs) else {}
+            anchor_results.append(
+                {
+                    "label": anchor_spec.get("label", f"A{ep + 1}"),
+                    "start_index": anchor_spec.get("start_index"),
+                    "start_timestamp": anchor_spec.get("start_timestamp"),
+                    "evaluation_sharpe": float(total_reward),
+                    "executed_trade_count": episode_distribution["buy"] + episode_distribution["sell"],
+                    "sell_realized_exit_count": episode_distribution["sell"],
+                    "final_balance": last_balance,
+                    "pnl": last_balance - self.env.initial_balance,
+                }
+            )
 
             if ep == 0:
                 price_series = ep_prices
@@ -147,10 +186,14 @@ class Trainer:
         if not episode_rewards:
             return {
                 "sharpe": 0.0,
+                "training_sharpe": 0.0,
                 "final_balance": self.env.initial_balance,
                 "pnl": 0.0,
                 "initial_balance": self.env.initial_balance,
                 "transaction_distribution": transaction_distribution,
+                "executed_trade_count": 0,
+                "sell_realized_exit_count": 0,
+                "anchor_results": anchor_results,
                 "price_series": price_series,
                 "transaction_outcome_series": transaction_outcome_series,
             }
@@ -162,13 +205,19 @@ class Trainer:
 
         avg_final_balance = float(np.mean(episode_final_balances))
         pnl = avg_final_balance - self.env.initial_balance
+        executed_trade_count = transaction_distribution["buy"] + transaction_distribution["sell"]
+        sell_realized_exit_count = transaction_distribution["sell"]
 
         return {
             "sharpe": sharpe,
+            "training_sharpe": sharpe,
             "final_balance": avg_final_balance,
             "pnl": pnl,
             "initial_balance": self.env.initial_balance,
             "transaction_distribution": transaction_distribution,
+            "executed_trade_count": executed_trade_count,
+            "sell_realized_exit_count": sell_realized_exit_count,
+            "anchor_results": anchor_results,
             "price_series": price_series,
             "transaction_outcome_series": transaction_outcome_series,
         }
@@ -210,6 +259,80 @@ class Trainer:
             self._trade_outcomes["losing"] += 1
         else:
             self._trade_outcomes["flat"] += 1
+
+    def _build_promotion_gate(
+        self,
+        evaluation_sharpe: float,
+        executed_trade_count: int,
+        sell_realized_exit_count: int,
+    ) -> tuple[bool, list[dict[str, float | int | str | bool | None]], list[str]]:
+        checks: list[dict[str, float | int | str | bool | None]] = []
+
+        if self.best_sharpe == -np.inf:
+            checks.append(
+                _promotion_check(
+                    name="evaluation_sharpe_threshold",
+                    passed=False,
+                    actual=evaluation_sharpe,
+                    target=None,
+                    message="No incumbent best yet; baseline was recorded without promotion.",
+                )
+            )
+        else:
+            target = self.best_sharpe + self.promote_threshold
+            passed = evaluation_sharpe >= target
+            checks.append(
+                _promotion_check(
+                    name="evaluation_sharpe_threshold",
+                    passed=passed,
+                    actual=evaluation_sharpe,
+                    target=target,
+                    message=(
+                        f"Evaluation Sharpe {evaluation_sharpe:.4f} beat target {target:.4f}."
+                        if passed
+                        else f"Evaluation Sharpe {evaluation_sharpe:.4f} did not beat target {target:.4f}."
+                    ),
+                )
+            )
+
+        executed_trade_passed = executed_trade_count >= self.min_executed_trades_for_promotion
+        checks.append(
+            _promotion_check(
+                name="executed_trade_count",
+                passed=executed_trade_passed,
+                actual=executed_trade_count,
+                target=self.min_executed_trades_for_promotion,
+                message=(
+                    f"Executed Trade count {executed_trade_count} met minimum {self.min_executed_trades_for_promotion}."
+                    if executed_trade_passed
+                    else (
+                        f"Executed Trade count {executed_trade_count} was below minimum "
+                        f"{self.min_executed_trades_for_promotion}."
+                    )
+                ),
+            )
+        )
+
+        sell_exit_passed = sell_realized_exit_count >= self.min_sell_exits_for_promotion
+        checks.append(
+            _promotion_check(
+                name="sell_realized_exit_count",
+                passed=sell_exit_passed,
+                actual=sell_realized_exit_count,
+                target=self.min_sell_exits_for_promotion,
+                message=(
+                    f"SELL realized exits {sell_realized_exit_count} met minimum {self.min_sell_exits_for_promotion}."
+                    if sell_exit_passed
+                    else (
+                        f"SELL realized exits {sell_realized_exit_count} were below minimum "
+                        f"{self.min_sell_exits_for_promotion}."
+                    )
+                ),
+            )
+        )
+
+        failed_reasons = [str(check["message"]) for check in checks if not bool(check["passed"])]
+        return (len(failed_reasons) == 0), checks, failed_reasons
 
     def _notify_step(self, generation: int, action, reward: float, info: dict) -> None:
         self._stream_step += 1
@@ -314,16 +437,21 @@ class Trainer:
             )
 
             eval_result = self._evaluate(self._model)
-            current_sharpe = eval_result["sharpe"]
+            training_sharpe = float(eval_result.get("training_sharpe", eval_result["sharpe"]))
+            evaluation_sharpe = float(eval_result["sharpe"])
             final_balance = eval_result["final_balance"]
             pnl = eval_result["pnl"]
             initial_balance = eval_result["initial_balance"]
             transaction_distribution = eval_result.get("transaction_distribution", _empty_transaction_distribution())
+            executed_trade_count = int(eval_result.get("executed_trade_count", 0))
+            sell_realized_exit_count = int(eval_result.get("sell_realized_exit_count", 0))
+            anchor_results = eval_result.get("anchor_results", [])
             price_series = eval_result.get("price_series", [])
             transaction_outcome_series = eval_result.get("transaction_outcome_series", [])
             trade_win_rate = self._current_trade_win_rate()
             logger.info(
-                f"  Sharpe: {current_sharpe:.4f} (best: {self.best_sharpe:.4f}) | "
+                f"  Train Sharpe: {training_sharpe:.4f} | Eval Sharpe: {evaluation_sharpe:.4f} "
+                f"(best eval: {self.best_sharpe:.4f}) | "
                 f"Balance: {final_balance:.2f} | PnL: {pnl:+.2f} | trade_win={trade_win_rate*100:.0f}%"
             )
 
@@ -332,37 +460,52 @@ class Trainer:
                 self._prune_old_checkpoints()
                 logger.info(f"  Checkpoint saved: {ckpt}")
 
-            promoted = (
-                self.best_sharpe != -np.inf
-                and current_sharpe - self.best_sharpe >= self.promote_threshold
+            promoted, promotion_gate_checks, promotion_gate_reasons = self._build_promotion_gate(
+                evaluation_sharpe=evaluation_sharpe,
+                executed_trade_count=executed_trade_count,
+                sell_realized_exit_count=sell_realized_exit_count,
             )
+            for check in promotion_gate_checks:
+                status = "PASS" if check["passed"] else "FAIL"
+                logger.info(f"  Gate [{status}] {check['name']}: {check['message']}")
             if promoted:
-                self.best_sharpe = current_sharpe
+                self.best_sharpe = evaluation_sharpe
                 self.best_checkpoint = self._save_checkpoint(self._model, "best")
-                logger.info(f"  Promoted! New best Sharpe: {self.best_sharpe:.4f}")
+                logger.info(f"  Promotion decision: PROMOTED | new best eval sharpe {self.best_sharpe:.4f}")
+            else:
+                logger.info("  Promotion decision: NOT PROMOTED | " + " | ".join(promotion_gate_reasons))
 
             if self.best_sharpe == -np.inf:
-                self.best_sharpe = current_sharpe
+                self.best_sharpe = evaluation_sharpe
 
             if self.wandb_project:
                 wandb.log({
                     "generation": generation + 1,
-                    "current_sharpe": current_sharpe,
-                    "best_sharpe": self.best_sharpe,
+                    "training_sharpe": training_sharpe,
+                    "evaluation_sharpe": evaluation_sharpe,
+                    "best_evaluation_sharpe": self.best_sharpe,
                     "promoted": int(promoted),
+                    "evaluation_executed_trade_count": executed_trade_count,
+                    "evaluation_sell_realized_exit_count": sell_realized_exit_count,
                     "final_balance": final_balance,
                     "pnl": pnl,
                 })
 
             self._notify({
                 "generation": generation + 1,
-                "current_sharpe": current_sharpe,
-                "best_sharpe": self.best_sharpe,
+                "training_sharpe": training_sharpe,
+                "evaluation_sharpe": evaluation_sharpe,
+                "best_evaluation_sharpe": self.best_sharpe,
                 "promoted": promoted,
                 "total_generations": self.total_generations,
                 "final_balance": final_balance,
                 "pnl": pnl,
                 "initial_balance": initial_balance,
+                "evaluation_executed_trade_count": executed_trade_count,
+                "evaluation_sell_realized_exit_count": sell_realized_exit_count,
+                "promotion_gate_checks": promotion_gate_checks,
+                "promotion_gate_reasons": promotion_gate_reasons,
+                "anchor_results": anchor_results,
                 "transaction_distribution": dict(self._generation_transaction_distribution),
                 "price_series": price_series,
                 "action_series": transaction_outcome_series,

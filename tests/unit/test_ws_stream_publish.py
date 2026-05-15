@@ -36,8 +36,9 @@ def test_ws_receives_training_update_when_runner_publishes():
             {
                 'generation': 1,
                 'total_generations': 10,
-                'current_sharpe': 1.5,
-                'best_sharpe': 1.5,
+                'training_sharpe': 1.2,
+                'evaluation_sharpe': 1.5,
+                'best_evaluation_sharpe': 1.5,
                 'final_balance': 10500.0,
                 'pnl': 500.0,
                 'trade_win_rate': 0.6,
@@ -76,7 +77,9 @@ def test_ws_receives_training_update_when_runner_publishes():
         assert msg is not None, 'no training_update event received'
         data = msg['data']
         assert data['generation'] == 1
-        assert data['current_sharpe'] == 1.5
+        assert data['training_sharpe'] == 1.2
+        assert data['evaluation_sharpe'] == 1.5
+        assert data['best_evaluation_sharpe'] == 1.5
         assert data['transaction_distribution'] == {'buy': 3, 'sell': 3, 'no_transaction': 4}
         assert data['last_transaction']['action'] == 'BUY'
 

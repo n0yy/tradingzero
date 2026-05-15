@@ -1,6 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 
-import { DashboardModeTabs } from '@/components/DashboardModeTabs'
 import { ActionBadge } from '@/components/ActionBadge'
 import { Button } from '@/components/ui/button'
 import { fetchActiveConfig, runBestBattle } from '@/lib/api'
@@ -15,7 +14,6 @@ function formatTimestamp(iso: string | null, mode: 'utc' | 'local'): string {
 
 export default function BattlePage() {
   const timeMode = useUIStore((s) => s.timeMode)
-  const toggleTimeMode = useUIStore((s) => s.toggleTimeMode)
   const configQuery = useQuery({
     queryKey: ['active-config'],
     queryFn: fetchActiveConfig,
@@ -32,22 +30,16 @@ export default function BattlePage() {
   const battleError = battleMutation.error instanceof Error ? battleMutation.error.message : null
 
   return (
-    <main className="dashboard">
-      <header className="topbar dashboard-topbar">
-        <div className="dashboard-title-cluster">
+    <main className="mx-auto w-full max-w-none px-4 py-4 md:px-6">
+      <header className="mb-4 grid gap-3">
+        <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <h1>TradingZero Dashboard</h1>
+            <h1 className="font-display text-2xl tracking-wide text-foreground">TradingZero Dashboard</h1>
             <span className="inline-flex rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
               {battleMutation.isPending ? 'BATTLING' : result ? 'READY' : 'IDLE'}
             </span>
           </div>
-          <p className="panel-subtle">Run the promoted `best.zip` once against the latest market slice.</p>
-        </div>
-        <DashboardModeTabs />
-        <div className="dashboard-time-control">
-          <Button onClick={toggleTimeMode} variant="outline" size="sm" type="button">
-            Time: {timeMode.toUpperCase()}
-          </Button>
+          <p className="text-sm text-muted-foreground">Run the promoted `best.zip` once against the latest market slice.</p>
         </div>
       </header>
 

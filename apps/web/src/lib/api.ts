@@ -12,6 +12,10 @@ export type RunHistoryItem = {
   started_at: string | null
   finished_at: string | null
   error: string | null
+  evaluation_summary?: {
+    latest_promotion_outcome: 'promoted' | 'not_promoted'
+    best_evaluation_sharpe: number
+  } | null
 }
 
 export type RunErrorItem = {
