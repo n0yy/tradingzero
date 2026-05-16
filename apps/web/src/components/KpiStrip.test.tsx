@@ -131,8 +131,9 @@ describe('KpiStrip', () => {
             realized_pnl: 0,
             unrealized_pnl_after: 0,
           },
-          timestamp: '2026-05-14T00:00:00Z',
-        }}
+          timestamp: '2024-01-01T00:00:00Z',
+  phase: 'training' as const,
+}}
       />,
     )
     expect(screen.getByTestId('kpi-balance')).toHaveTextContent('$10,250.75')

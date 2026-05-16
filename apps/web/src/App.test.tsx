@@ -219,12 +219,10 @@ describe('dashboard', () => {
     expect(screen.getByRole('link', { name: /^errors$/i })).toBeInTheDocument()
   })
 
-  it('renders sidebar footer utility rows for time mode and theme placeholder', () => {
+  it('renders sidebar footer utility row for time mode', () => {
     renderApp('/')
     expect(screen.getByRole('button', { name: /^time$/i })).toBeInTheDocument()
     expect(screen.getByText('UTC')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^theme$/i })).toBeDisabled()
-    expect(screen.getByText('Dark/Light')).toBeInTheDocument()
   })
 
   it('renders sidebar trigger for collapsible shell control', () => {

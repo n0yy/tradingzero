@@ -84,6 +84,7 @@ class StepBatchData(BaseModel):
     flat_trades: int
     executed_trade: ExecutedTrade | None
     timestamp: str
+    phase: Literal['training', 'evaluation'] = 'training'
 
 
 class StepBatchEvent(BaseModel):
@@ -219,6 +220,7 @@ def map_step_batch_payload(payload: dict) -> dict:
             flat_trades=int(payload.get('flat_trades', 0)),
             executed_trade=_executed_trade(payload.get('executed_trade')),
             timestamp=payload.get('timestamp') or datetime.now(UTC).isoformat(),
+            phase=payload.get('phase', 'training'),
         ),
     )
     return event.model_dump()

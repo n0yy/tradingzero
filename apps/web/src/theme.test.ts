@@ -5,20 +5,26 @@ import { describe, expect, it } from 'vitest'
 describe('theme foundation', () => {
   const indexCss = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf-8')
 
-  it('does not declare a prefers-color-scheme: light override', () => {
-    expect(indexCss).not.toMatch(/@media\s*\(\s*prefers-color-scheme:\s*light\s*\)/i)
+  it('does not declare a dark mode variant', () => {
+    expect(indexCss).not.toMatch(/@custom-variant\s+dark/i)
+    expect(indexCss).not.toMatch(/\.dark\s*\{/)
   })
 
   it('imports tailwindcss', () => {
     expect(indexCss).toMatch(/@import\s+['"]tailwindcss['"]/i)
   })
 
-  it('exposes a custom dark variant gated on the .dark class', () => {
-    expect(indexCss).toMatch(/@custom-variant\s+dark[^;]*\.dark/i)
+  it('uses a light background', () => {
+    expect(indexCss).toMatch(/--background:\s*#ffffff/)
   })
 
   it('declares the gain and loss accent tokens', () => {
     expect(indexCss).toMatch(/--gain:/)
     expect(indexCss).toMatch(/--loss:/)
+  })
+
+  it('declares neumorphism shadow tokens', () => {
+    expect(indexCss).toMatch(/--neu-shadow:/)
+    expect(indexCss).toMatch(/--neu-shadow-inset:/)
   })
 })

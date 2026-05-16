@@ -71,9 +71,10 @@ export type StepBatch = {
   flat_trades: number
   executed_trade: ExecutedTrade | null
   timestamp: string
+  phase: 'training' | 'evaluation'
 }
 
-export type PriceBufferPoint = { time: number; value: number; action: 'BUY' | 'SELL' | 'NO_TRANSACTION' }
+export type PriceBufferPoint = { time: number; value: number; action: 'BUY' | 'SELL' | 'NO_TRANSACTION'; phase: 'training' | 'evaluation' }
 export type ProfitLossDistribution = { profit: number; loss: number; flat: number }
 
 const PRICE_BUFFER_MAX = 500
@@ -184,7 +185,7 @@ export function useTrainingStream(scopeKey?: string | null) {
             const key = classifyStepOutcome(data)
             return { ...current, [key]: current[key] + 1 }
           })
-          const next = [...bufferRef.current, { time: data.step, value: data.price, action: data.transaction_outcome }]
+          const next = [...bufferRef.current, { time: data.step, value: data.price, action: data.transaction_outcome, phase: data.phase ?? 'training' }]
           bufferRef.current = next.length > PRICE_BUFFER_MAX ? next.slice(next.length - PRICE_BUFFER_MAX) : next
           setPriceBuffer(bufferRef.current)
         }

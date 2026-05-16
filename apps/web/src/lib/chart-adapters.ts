@@ -1,6 +1,6 @@
 import type { PriceBufferPoint, ProfitLossDistribution, TrainingUpdate } from '../hooks/useTrainingStream'
 
-export type PricePoint = { time: number; value: number }
+export type PricePoint = { time: number; value: number; phase: 'training' | 'evaluation' }
 
 export type TradeMarker = {
   time: number
@@ -16,7 +16,7 @@ export type PriceChartData = {
 }
 
 export function toPriceSeries(prices: number[]) {
-  return prices.map((value, idx) => ({ time: (idx + 1) as unknown as number, value }))
+  return prices.map((value, idx) => ({ time: (idx + 1) as unknown as number, value, phase: 'training' as const }))
 }
 
 export function toTradeMarkers(actions: number[], prices: number[]) {
@@ -28,7 +28,7 @@ export function toTradeMarkers(actions: number[], prices: number[]) {
       markers.push({
         time: i + 1,
         position: 'belowBar',
-        color: '#2ee6b8',
+        color: '#25ced1',
         shape: 'arrowUp',
         text: `BUY @ ${prices[i] ?? 0}`,
       })
@@ -37,7 +37,7 @@ export function toTradeMarkers(actions: number[], prices: number[]) {
       markers.push({
         time: i + 1,
         position: 'aboveBar',
-        color: '#ff6b6b',
+        color: '#ea526f',
         shape: 'arrowDown',
         text: `SELL @ ${prices[i] ?? 0}`,
       })
@@ -52,13 +52,13 @@ export function toPriceChartData(stream: TrainingUpdate | null): PriceChartData 
   const last = stream.last_transaction
   if (!last) return { series: [], markers: [] }
 
-  const series: PricePoint[] = [{ time: stream.generation, value: last.execution_price }]
+  const series: PricePoint[] = [{ time: stream.generation, value: last.execution_price, phase: 'training' as const }]
   const markers: TradeMarker[] = []
   if (last.action === 'BUY') {
     markers.push({
       time: stream.generation,
       position: 'belowBar',
-      color: '#2ee6b8',
+      color: '#25ced1',
       shape: 'arrowUp',
       text: `BUY @ ${last.execution_price}`,
     })
@@ -66,7 +66,7 @@ export function toPriceChartData(stream: TrainingUpdate | null): PriceChartData 
     markers.push({
       time: stream.generation,
       position: 'aboveBar',
-      color: '#ff6b6b',
+      color: '#ea526f',
       shape: 'arrowDown',
       text: `SELL @ ${last.execution_price}`,
     })
@@ -75,14 +75,14 @@ export function toPriceChartData(stream: TrainingUpdate | null): PriceChartData 
 }
 
 export function fromPriceBuffer(buffer: PriceBufferPoint[]): PriceChartData {
-  const series: PricePoint[] = buffer.map((p) => ({ time: p.time, value: p.value }))
+  const series: PricePoint[] = buffer.map((p) => ({ time: p.time, value: p.value, phase: p.phase ?? 'training' }))
   const markers: TradeMarker[] = []
   for (const point of buffer) {
     if (point.action === 'BUY') {
       markers.push({
         time: point.time,
         position: 'belowBar',
-        color: '#2ee6b8',
+        color: '#25ced1',
         shape: 'arrowUp',
         text: `BUY @ ${point.value}`,
       })
@@ -90,7 +90,7 @@ export function fromPriceBuffer(buffer: PriceBufferPoint[]): PriceChartData {
       markers.push({
         time: point.time,
         position: 'aboveBar',
-        color: '#ff6b6b',
+        color: '#ea526f',
         shape: 'arrowDown',
         text: `SELL @ ${point.value}`,
       })
@@ -101,9 +101,9 @@ export function fromPriceBuffer(buffer: PriceBufferPoint[]): PriceChartData {
 
 export function toProfitLossOptions(distribution: ProfitLossDistribution) {
   const data = [
-    { name: 'Profit', value: distribution.profit, itemStyle: { color: '#2ee6b8' } },
-    { name: 'Loss', value: distribution.loss, itemStyle: { color: '#ff6b6b' } },
-    { name: 'Flat', value: distribution.flat, itemStyle: { color: '#7ca099' } },
+    { name: 'Profit', value: distribution.profit, itemStyle: { color: '#25ced1' } },
+    { name: 'Loss', value: distribution.loss, itemStyle: { color: '#ea526f' } },
+    { name: 'Flat', value: distribution.flat, itemStyle: { color: '#64748b' } },
   ]
   const total = distribution.profit + distribution.loss + distribution.flat
 
@@ -120,7 +120,7 @@ export function toProfitLossOptions(distribution: ProfitLossDistribution) {
         top: '41%',
         style: {
           text: String(total),
-          fill: '#e5f4ef',
+          fill: '#1a1a2e',
           fontSize: 34,
           fontWeight: 700,
           textAlign: 'center',
@@ -132,7 +132,7 @@ export function toProfitLossOptions(distribution: ProfitLossDistribution) {
         top: '55%',
         style: {
           text: 'Tracked Steps',
-          fill: '#7ca099',
+          fill: '#64748b',
           fontSize: 13,
           textAlign: 'center',
         },
@@ -148,7 +148,7 @@ export function toProfitLossOptions(distribution: ProfitLossDistribution) {
         label: { show: false },
         labelLine: { show: false },
         itemStyle: {
-          borderColor: '#101f1c',
+          borderColor: '#ffffff',
           borderWidth: 6,
         },
         data,

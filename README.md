@@ -27,7 +27,7 @@ Dari observasi itu, agent memilih **dua keputusan sekaligus**:
 
 Contoh: agent bisa memilih "Buy 25%" untuk masuk secara bertahap, atau "Sell 100%" untuk keluar penuh. Posisi bersifat aditif dan di-clamp ke [0.0, 1.0], sehingga agent bisa membangun posisi secara parsial.
 
-Reward dihitung dari **rolling Sharpe ratio** atas return episode, ditambah sinyal harga langsung kecil agar agent mendapat gradien bahkan saat holding. Setiap transaksi dikenai biaya proporsional terhadap perubahan posisi aktual.
+Reward dihitung dari **rolling Sharpe ratio** atas return episode, ditambah **outperformance signal** vs half-weight buy-and-hold benchmark — agent dapat reward positif saat menahan diri di market turun (avoided loss) atau saat posisinya mengalahkan benchmark, dan reward negatif saat ketinggalan kenaikan atau long di market turun. Setiap transaksi dikenai biaya proporsional terhadap perubahan posisi aktual.
 
 ---
 
@@ -43,7 +43,7 @@ Active development. Latest run (2026-05-14):
 ## How It Works
 
 1. **Data Layer** — mengambil candle OHLCV dari exchange (Binance, OKX, Bybit) via CCXT, dinormalisasi menjadi rolling window.
-2. **Environment** — custom Gymnasium env. Agent mengamati 60 candle × 7 channel dan memilih arah + ukuran posisi. Reward adalah Sharpe ratio + sinyal harga langsung, dikurangi transaction cost.
+2. **Environment** — custom Gymnasium env. Agent mengamati 60 candle × 7 channel dan memilih arah + ukuran posisi. Reward adalah Sharpe ratio + outperformance signal vs half-weight buy-and-hold, dikurangi transaction cost.
 3. **Self-Play Training** — PPO (Stable-Baselines3) berlatih lintas generasi. Jika Sharpe agent saat ini melampaui best Sharpe sebesar `promote_threshold`, agent dipromosikan dan disimpan sebagai `best.zip`.
 4. **Web Platform** — backend FastAPI + frontend React (Vite) sebagai pondasi monitoring dan kontrol training berbasis browser.
 

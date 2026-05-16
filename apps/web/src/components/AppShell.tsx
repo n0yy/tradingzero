@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 import { NavLink, Outlet } from 'react-router'
-import { Bot, Gauge, ListChecks, Settings2, ShieldAlert, SunMoon, Timer } from 'lucide-react'
+import { Bot, Gauge, ListChecks, Map, Settings2, ShieldAlert, Timer } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import {
@@ -28,6 +28,7 @@ const navItems: { to: string; label: string; end?: boolean; icon: ComponentType<
   { to: '/config', label: 'Config', icon: Settings2 },
   { to: '/runs', label: 'Runs', icon: ListChecks },
   { to: '/errors', label: 'Errors', icon: ShieldAlert },
+  { to: '/roadmap', label: 'Roadmap', icon: Map },
 ]
 
 export function AppShell() {
@@ -77,17 +78,6 @@ export function AppShell() {
                 <span>Time</span>
               </SidebarMenuButton>
               <SidebarMenuBadge>{timeMode.toUpperCase()}</SidebarMenuBadge>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                disabled
-                tooltip="Theme toggle (placeholder)"
-                className="w-full"
-              >
-                <SunMoon className="size-4" />
-                <span>Theme</span>
-              </SidebarMenuButton>
-              <SidebarMenuBadge>Dark/Light</SidebarMenuBadge>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>

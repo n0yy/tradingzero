@@ -159,7 +159,14 @@ class CryptoEnv(gym.Env):
             }
 
         reward = self._compute_reward()
-        reward += price_return * self._position * 0.1
+        # Outperformance vs half-weight buy-and-hold benchmark.
+        # - Holding flat in a down market -> positive reward (avoided loss).
+        # - Holding flat in an up market -> small negative reward (missed gain).
+        # - Long position outperforming benchmark -> positive reward.
+        # Cost is included in agent_return so trades must beat their friction.
+        benchmark_return = price_return * 0.5
+        agent_return = price_return * self._position - cost
+        reward += (agent_return - benchmark_return) * 0.1
 
         self._current_step += 1
         terminated = self._balance <= 0

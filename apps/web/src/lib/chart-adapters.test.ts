@@ -104,9 +104,9 @@ describe('fromPriceBuffer', () => {
 
   it('maps each buffer point to a price series point', () => {
     const result = fromPriceBuffer([
-      { time: 1, value: 30000, action: 'NO_TRANSACTION' },
-      { time: 2, value: 30050, action: 'BUY' },
-      { time: 3, value: 30025, action: 'NO_TRANSACTION' },
+      { time: 1, value: 30000, action: 'NO_TRANSACTION', phase: 'training' as const },
+      { time: 2, value: 30050, action: 'BUY', phase: 'training' as const },
+      { time: 3, value: 30025, action: 'NO_TRANSACTION', phase: 'training' as const },
     ])
     expect(result.series).toHaveLength(3)
     expect(result.series[0].value).toBe(30000)
@@ -115,9 +115,9 @@ describe('fromPriceBuffer', () => {
 
   it('emits markers for BUY and SELL actions only', () => {
     const result = fromPriceBuffer([
-      { time: 1, value: 30000, action: 'BUY' },
-      { time: 2, value: 30050, action: 'NO_TRANSACTION' },
-      { time: 3, value: 29900, action: 'SELL' },
+      { time: 1, value: 30000, action: 'BUY', phase: 'training' as const },
+      { time: 2, value: 30050, action: 'NO_TRANSACTION', phase: 'training' as const },
+      { time: 3, value: 29900, action: 'SELL', phase: 'training' as const },
     ])
     expect(result.markers).toHaveLength(2)
     expect(result.markers[0].text).toContain('BUY')

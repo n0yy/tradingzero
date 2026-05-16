@@ -162,6 +162,37 @@ class Trainer:
 
                 ep_prices.append(float(info.get("price", info.get("next_price", last_balance))))
                 ep_outcomes.append(_transaction_outcome_code(transaction_outcome))
+                self._stream_step += 1
+                self._notify({
+                    "kind": "step_batch",
+                    "step": self._stream_step,
+                    "generation": getattr(self, "_current_generation", 0),
+                    "price": float(info.get("price", info.get("next_price", last_balance))),
+                    "requested_direction": "HOLD",
+                    "requested_size_percent": 0.0,
+                    "transaction_outcome": transaction_outcome,
+                    "is_transaction": transaction_outcome in ("BUY", "SELL"),
+                    "position": float(info.get("position_after", info.get("position", 0.0))),
+                    "position_before": float(info.get("position_before", 0.0)),
+                    "position_after": float(info.get("position_after", info.get("position", 0.0))),
+                    "executed_delta": float(info.get("executed_delta", 0.0)),
+                    "balance": float(info.get("balance", last_balance)),
+                    "pnl": float(info.get("balance", last_balance)) - float(self.env.initial_balance),
+                    "rolling_reward": float(reward),
+                    "steps_per_second": 0.0,
+                    "equity_curve": [],
+                    "cost": float(info.get("cost", 0.0)),
+                    "cumulative_buys": self._cumulative_buys,
+                    "cumulative_sells": self._cumulative_sells,
+                    "transaction_distribution": dict(self._generation_transaction_distribution),
+                    "trade_win_rate": self._current_trade_win_rate(),
+                    "winning_trades": self._trade_outcomes["winning"],
+                    "losing_trades": self._trade_outcomes["losing"],
+                    "flat_trades": self._trade_outcomes["flat"],
+                    "executed_trade": None,
+                    "timestamp": info.get("timestamp"),
+                    "phase": "evaluation",
+                })
 
             episode_rewards.append(total_reward)
             episode_final_balances.append(last_balance)
@@ -388,6 +419,7 @@ class Trainer:
             "flat_trades": self._trade_outcomes["flat"],
             "executed_trade": dict(executed_trade) if executed_trade is not None else None,
             "timestamp": info.get("timestamp"),
+            "phase": "training",
         })
 
     def stop(self) -> None:
@@ -430,6 +462,7 @@ class Trainer:
             self._generation_transaction_distribution = _empty_transaction_distribution()
 
             logger.info(f"Generation {generation + 1}/{self.total_generations}")
+            self._current_generation = generation + 1
             self._model.learn(
                 total_timesteps=self.n_steps,
                 reset_num_timesteps=False,

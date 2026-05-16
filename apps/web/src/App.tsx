@@ -6,6 +6,7 @@ import BattlePage from './routes/BattlePage'
 import ConfigPage from './routes/ConfigPage'
 import ErrorsPage from './routes/ErrorsPage'
 import LiveView from './routes/LiveView'
+import RoadmapPage from './routes/RoadmapPage'
 import RunsPage from './routes/RunsPage'
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
         <Route path="config" element={<ConfigPage />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="errors" element={<ErrorsPage />} />
+        <Route path="roadmap" element={<RoadmapPage />} />
       </Route>
     </Routes>
   )
