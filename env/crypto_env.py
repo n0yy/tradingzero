@@ -196,10 +196,6 @@ class CryptoEnv(gym.Env):
 
         reward = step_return
 
-        if direction == 2 and traded > 0 and balance_before > 0:
-            realized_return = realized_pnl / balance_before
-            reward += float(np.clip(realized_return * 3.0, -0.5, 0.5))
-
         self._current_step += 1
         terminated = self._balance <= 0
         truncated = self._current_step >= self.episode_length

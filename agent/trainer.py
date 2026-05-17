@@ -102,6 +102,8 @@ class Trainer:
         self.resume_from = Path(resume_from) if resume_from else None
         self.best_sharpe: float = -np.inf
         self.best_checkpoint: Optional[Path] = None
+        self.reset_after_n_failures: int = 20
+        self._consecutive_failures: int = 0
         self._stop = False
         self._model: Optional[PPO] = None
         self._cumulative_buys: int = 0
@@ -163,7 +165,7 @@ class Trainer:
             while not done:
                 if self._stop:
                     break
-                action, _ = model.predict(obs, deterministic=True)
+                action, _ = model.predict(obs, deterministic=True, action_masks=self.env.action_masks())
                 obs, reward, terminated, truncated, info = self.env.step(action)
                 total_reward += float(reward)
                 prev_bal = last_balance
@@ -292,7 +294,7 @@ class Trainer:
     def _validate_checkpoint(self, path: Path) -> None:
         loaded = MaskablePPO.load(str(path), env=self.env)
         obs, _ = self.env.reset()
-        loaded.predict(obs, deterministic=True)
+        loaded.predict(obs, deterministic=True, action_masks=self.env.action_masks())
 
     def _prune_old_checkpoints(self, keep: int = 3) -> None:
         checkpoints = sorted(self.checkpoint_dir.glob("gen_*.zip"))
@@ -534,9 +536,21 @@ class Trainer:
             if promoted:
                 self.best_sharpe = evaluation_sharpe
                 self.best_checkpoint = self._save_checkpoint(self._model, "best")
+                self._consecutive_failures = 0
                 logger.info(f"  Promotion decision: PROMOTED | new best eval sharpe {self.best_sharpe:.4f}")
             else:
+                self._consecutive_failures += 1
                 logger.info("  Promotion decision: NOT PROMOTED | " + " | ".join(promotion_gate_reasons))
+                if (
+                    self._consecutive_failures >= self.reset_after_n_failures
+                    and self.best_checkpoint is not None
+                    and self.best_checkpoint.exists()
+                ):
+                    logger.info(
+                        f"  Resetting to best checkpoint after {self._consecutive_failures} consecutive failures"
+                    )
+                    self._model = MaskablePPO.load(str(self.best_checkpoint), env=self.env)
+                    self._consecutive_failures = 0
 
             if self.best_sharpe == -np.inf:
                 self.best_sharpe = evaluation_sharpe
