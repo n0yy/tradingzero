@@ -19,7 +19,6 @@ test-results/
 config.yaml
 
 # Data & cache
-data/
 logs/
 
 # Checkpoints (large binary files)

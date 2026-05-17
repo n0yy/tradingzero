@@ -29,7 +29,7 @@ def fetch_data(config: dict):
         config['data']['exchange'],
         config['data']['symbol'],
         config['data']['timeframe'],
-        limit=2000,
+        limit=config['data']['limit'],
     )
     cache_ohlcv(df, cache_path)
     logger.info(f'Cached {len(df)} candles to {cache_path}')

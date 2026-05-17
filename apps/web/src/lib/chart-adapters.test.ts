@@ -38,6 +38,7 @@ const fakeUpdate = (overrides: Partial<TrainingUpdate> = {}): TrainingUpdate => 
     fee: 0,
     realized_pnl: 0,
     unrealized_pnl_after: 0,
+  hold_duration: 0,
   },
   ...overrides,
 })

@@ -105,3 +105,27 @@ def test_inmemory_runner_emits_step_batch_faster_than_generations():
         'equity_curve',
     ):
         assert key in sample
+
+
+def test_in_memory_runner_emits_training_and_evaluation_phases():
+    received = []
+
+    adapter = InMemoryRunnerAdapter(
+        on_update=received.append,
+        tick_interval=0.3,
+        step_interval=0.05,
+        total_generations=2,
+    )
+
+    import threading, time
+    thread = threading.Thread(target=adapter.run, daemon=True)
+    thread.start()
+    time.sleep(0.8)
+    adapter.stop()
+    thread.join(timeout=2.0)
+
+    step_batches = [p for p in received if p.get('kind') == 'step_batch']
+    phases = {p.get('phase') for p in step_batches}
+
+    assert 'training' in phases, "expected training phase steps"
+    assert 'evaluation' in phases, "expected evaluation phase steps"

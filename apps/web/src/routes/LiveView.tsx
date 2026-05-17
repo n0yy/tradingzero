@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import PriceChart from '../components/PriceChart'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ActionDistributionPanel } from '@/components/ActionDistributionPanel'
 import { ChartStateHelper, LiveViewStateBadge } from '@/components/LiveViewStateBanner'
 import { KpiStrip } from '@/components/KpiStrip'
@@ -96,51 +97,62 @@ export default function LiveView() {
       </section>
 
       <section className="mt-3 grid gap-3 xl:grid-cols-3">
-        <article className="card panel">
-          <h2>Run Status</h2>
-          <p>Run ID: {statusQuery.data?.run_id ?? '-'}</p>
-          <p>Started: {formatTimestamp(statusQuery.data?.started_at ?? null, timeMode)}</p>
-          {liveState.kind === 'error' && liveState.error && <p className="loss">Error: {liveState.error}</p>}
-          {(controls.start || controls.stop) && (
-            <div className="controls-row">
-              {controls.start && (
-                <Button
-                  variant="outline"
-                  data-testid="start-run"
-                  type="button"
-                  onClick={() => startMutation.mutate()}
-                  disabled={startMutation.isPending}
-                >
-                  {startMutation.isPending ? 'Starting...' : 'Start Run'}
-                </Button>
-              )}
-              {controls.stop && (
-                <Button
-                  variant="outline"
-                  data-testid="stop-run"
-                  type="button"
-                  onClick={() => stopMutation.mutate()}
-                  disabled={stopMutation.isPending || liveState.kind === 'stopping'}
-                >
-                  {stopMutation.isPending || liveState.kind === 'stopping' ? 'Stopping...' : 'Stop Run'}
-                </Button>
-              )}
-            </div>
-          )}
-          {controls.retry && (
-            <Button
-              variant="outline"
-              className="mt-2"
-              data-testid="retry-run"
-              type="button"
-              onClick={() => retryMutation.mutate()}
-              disabled={retryMutation.isPending}
-            >
-              {retryMutation.isPending ? 'Retrying...' : 'Retry Latest Checkpoint'}
-            </Button>
-          )}
-          {retryMutation.isError && <p className="loss">Retry blocked or failed.</p>}
-        </article>
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-semibold">Run Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-muted-foreground">Run ID: <span className="font-mono text-foreground">{statusQuery.data?.run_id ?? '-'}</span></p>
+            <p className="text-muted-foreground">Started: <span className="text-foreground">{formatTimestamp(statusQuery.data?.started_at ?? null, timeMode)}</span></p>
+            {liveState.kind === 'error' && liveState.error && (
+              <p className="text-sm text-destructive">Error: {liveState.error}</p>
+            )}
+            {(controls.start || controls.stop) && (
+              <div className="flex gap-2 pt-1">
+                {controls.start && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="start-run"
+                    type="button"
+                    onClick={() => startMutation.mutate()}
+                    disabled={startMutation.isPending}
+                  >
+                    {startMutation.isPending ? 'Starting...' : 'Start Run'}
+                  </Button>
+                )}
+                {controls.stop && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="stop-run"
+                    type="button"
+                    onClick={() => stopMutation.mutate()}
+                    disabled={stopMutation.isPending || liveState.kind === 'stopping'}
+                  >
+                    {stopMutation.isPending || liveState.kind === 'stopping' ? 'Stopping...' : 'Stop Run'}
+                  </Button>
+                )}
+              </div>
+            )}
+            {controls.retry && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                data-testid="retry-run"
+                type="button"
+                onClick={() => retryMutation.mutate()}
+                disabled={retryMutation.isPending}
+              >
+                {retryMutation.isPending ? 'Retrying...' : 'Retry Latest Checkpoint'}
+              </Button>
+            )}
+            {retryMutation.isError && (
+              <p className="text-sm text-destructive">Retry blocked or failed.</p>
+            )}
+          </CardContent>
+        </Card>
 
         <LastActionPanel event={stream} />
         <ActionDistributionPanel event={stream} />

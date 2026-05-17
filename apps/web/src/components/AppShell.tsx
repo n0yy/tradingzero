@@ -40,8 +40,9 @@ export function AppShell() {
       <Sidebar collapsible="icon" variant="sidebar">
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel className="font-display text-base tracking-wide text-primary">
-              TradingZero
+            <SidebarGroupLabel className="font-display text-base tracking-wide flex items-center gap-2 py-3 my-5 -ml-4">
+              <img src="/icon.png" alt="TradingZero" className="size-20 shrink-0" />
+              <span className="-ml-3">TradingZero</span>
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <nav aria-label="primary">
@@ -86,7 +87,7 @@ export function AppShell() {
       <SidebarInset>
         <div className="flex h-12 items-center gap-2 border-b border-border/70 px-3">
           <SidebarTrigger data-testid="sidebar-trigger" />
-          <span className="font-display text-sm tracking-wide text-muted-foreground">TradingZero</span>
+          <span className="font-display text-sm tracking-wide text-muted-foreground">Training - Eval</span>
           <Settings2 className="ml-auto size-4 text-muted-foreground" aria-hidden="true" />
         </div>
         <div className={cn('min-w-0 flex-1')}>

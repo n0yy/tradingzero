@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { fetchRunErrors, fetchRunStatus, fetchRuns } from '@/lib/api'
 import { useUIStore } from '../store/ui'
 
@@ -34,24 +35,31 @@ export default function ErrorsPage() {
       <header className="mb-4">
         <h1 className="font-display text-2xl tracking-wide text-foreground">Errors</h1>
       </header>
-      <section className="grid history-grid">
-        <article className="card panel">
-          <h2>Error Explorer</h2>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Error Explorer</CardTitle>
+        </CardHeader>
+        <CardContent>
           {errorsQuery.data?.errors?.length ? (
-            <div className="run-list">
+            <div className="space-y-2">
               {errorsQuery.data.errors.map((err) => (
-                <div className="run-row run-error" key={`${err.created_at}-${err.code}`}>
-                  <p>{err.code}</p>
-                  <p>{err.message}</p>
-                  <p>{formatTimestamp(err.created_at, timeMode)}</p>
+                <div
+                  className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm"
+                  key={`${err.created_at}-${err.code}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-semibold text-destructive">{err.code}</span>
+                    <span className="text-xs text-muted-foreground">{formatTimestamp(err.created_at, timeMode)}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-foreground">{err.message}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p>Tidak ada error untuk run terpilih.</p>
+            <p className="text-sm text-muted-foreground">Tidak ada error untuk run terpilih.</p>
           )}
-        </article>
-      </section>
+        </CardContent>
+      </Card>
     </main>
   )
 }

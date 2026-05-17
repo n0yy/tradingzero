@@ -91,6 +91,7 @@ class DataConfig(BaseModel):
     symbol: str = Field(min_length=3)
     timeframe: str = Field(min_length=1)
     window_size: int = Field(ge=10, le=500)
+    limit: int = Field(default=35040, ge=1, le=1000000)
 
 class EnvConfig(BaseModel):
     initial_balance: float = Field(gt=0)

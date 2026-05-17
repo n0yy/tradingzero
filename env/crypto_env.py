@@ -41,16 +41,22 @@ class CryptoEnv(gym.Env):
         self._balance = initial_balance
         self._returns: list[float] = []
         self._avg_entry_price = 0.0
+        self._position_open_step: int | None = None
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         max_start = len(self.data) - self.window_size - self.episode_length
-        self._start_idx = int(self.np_random.integers(0, max(1, max_start)))
+        fixed_start = (options or {}).get('start_index')
+        if fixed_start is not None:
+            self._start_idx = int(max(0, min(fixed_start, max_start)))
+        else:
+            self._start_idx = int(self.np_random.integers(0, max(1, max_start)))
         self._current_step = 0
         self._position = 0.0
         self._balance = self.initial_balance
         self._returns = []
         self._avg_entry_price = 0.0
+        self._position_open_step = None
         obs = self._get_obs()
         return obs, {}
 
@@ -116,6 +122,8 @@ class CryptoEnv(gym.Env):
                 self._avg_entry_price = (
                     (self._avg_entry_price * self._position + current_price * traded) / new_position
                 )
+                if self._position_open_step is None:
+                    self._position_open_step = self._current_step
             self._position = new_position
         elif direction == 2:  # Sell
             traded = min(delta, self._position)
@@ -123,6 +131,7 @@ class CryptoEnv(gym.Env):
             self._position = max(self._position - delta, 0.0)
             if self._position == 0.0:
                 self._avg_entry_price = 0.0
+                self._position_open_step = None
         # direction == 0: Hold — position unchanged
 
         traded = abs(self._position - prev_position)
@@ -156,6 +165,7 @@ class CryptoEnv(gym.Env):
                 "fee": fee_usd,
                 "realized_pnl": realized_pnl,
                 "unrealized_pnl_after": self._compute_unrealized_pnl_usd(next_price, self._balance),
+                "hold_duration": (self._current_step - self._position_open_step) if self._position_open_step is not None else 0,
             }
 
         reward = self._compute_reward()
@@ -164,7 +174,7 @@ class CryptoEnv(gym.Env):
         # - Holding flat in an up market -> small negative reward (missed gain).
         # - Long position outperforming benchmark -> positive reward.
         # Cost is included in agent_return so trades must beat their friction.
-        benchmark_return = price_return * 0.5
+        benchmark_return = price_return * self._position * 0.5
         agent_return = price_return * self._position - cost
         reward += (agent_return - benchmark_return) * 0.1
 
@@ -195,7 +205,7 @@ class CryptoEnv(gym.Env):
         }
         return obs, reward, terminated, truncated, info
 
-    def _compute_reward(self, window: int = 20) -> float:
+    def _compute_reward(self, window: int = 100) -> float:
         if len(self._returns) < 2:
             return 0.0
         recent = np.array(self._returns[-window:], dtype=np.float32)

@@ -145,12 +145,53 @@ class InMemoryRunnerAdapter:
                     'flat_trades': flat_trades,
                     'executed_trade': executed_trade,
                     'timestamp': timestamp,
+                    'phase': 'training',
                 })
 
             training_sharpe = math.sin(generation / 9.0) * 0.9 + self._rng.uniform(-0.08, 0.08)
             evaluation_sharpe = math.sin(generation / 8.0) * 1.2 + self._rng.uniform(-0.1, 0.1)
             best_evaluation_sharpe = max(best_evaluation_sharpe, evaluation_sharpe)
             trade_win_rate = winning_trades / max(winning_trades + losing_trades + flat_trades, 1)
+
+            eval_steps = max(2, steps_per_generation // 3)
+            eval_price = price
+            for _ in range(eval_steps):
+                if self._stop_event.wait(timeout=self._step_interval):
+                    return
+                global_step += 1
+                eval_price *= 1 + self._rng.uniform(-0.001, 0.001)
+                eval_action = self._rng.choices([0, 1, 2], weights=[6, 2, 2])[0]
+                eval_outcome = 'BUY' if eval_action == 1 else 'SELL' if eval_action == 2 else 'NO_TRANSACTION'
+                self._on_update({
+                    'kind': 'step_batch',
+                    'step': global_step,
+                    'generation': generation,
+                    'price': eval_price,
+                    'requested_direction': 'HOLD' if eval_action == 0 else 'BUY' if eval_action == 1 else 'SELL',
+                    'requested_size_percent': 0.1,
+                    'transaction_outcome': eval_outcome,
+                    'is_transaction': eval_outcome != 'NO_TRANSACTION',
+                    'position_before': position,
+                    'position_after': position,
+                    'executed_delta': 0.0,
+                    'position': position,
+                    'balance': balance,
+                    'pnl': balance - 10_000.0,
+                    'rolling_reward': self._rng.uniform(-1.0, 1.5),
+                    'steps_per_second': 1.0 / max(self._step_interval, 1e-6),
+                    'equity_curve': list(equity_curve),
+                    'cost': 0.0,
+                    'cumulative_buys': cumulative_buys,
+                    'cumulative_sells': cumulative_sells,
+                    'transaction_distribution': dict(transaction_distribution),
+                    'trade_win_rate': trade_win_rate,
+                    'winning_trades': winning_trades,
+                    'losing_trades': losing_trades,
+                    'flat_trades': flat_trades,
+                    'executed_trade': None,
+                    'timestamp': datetime.now(UTC).isoformat(),
+                    'phase': 'evaluation',
+                })
 
             self._on_update({
                 'kind': 'generation_update',

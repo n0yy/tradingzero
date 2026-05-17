@@ -51,6 +51,7 @@ describe('KpiStrip', () => {
             fee: 0.05,
             realized_pnl: 0,
             unrealized_pnl_after: 0,
+  hold_duration: 0,
           },
         }}
       />,
@@ -130,6 +131,7 @@ describe('KpiStrip', () => {
             fee: 10,
             realized_pnl: 0,
             unrealized_pnl_after: 0,
+  hold_duration: 0,
           },
           timestamp: '2024-01-01T00:00:00Z',
   phase: 'training' as const,

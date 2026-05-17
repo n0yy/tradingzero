@@ -122,19 +122,33 @@ class Trainer:
             verbose=0,
         )
 
-    def _evaluate(self, model: PPO, n_eval_episodes: int = 5) -> dict:
+    def _evaluate(self, model: PPO, n_eval_episodes: int | None = None) -> dict:
         episode_rewards: list[float] = []
         episode_final_balances: list[float] = []
         transaction_distribution = _empty_transaction_distribution()
         price_series: list[float] = []
         transaction_outcome_series: list[int] = []
         anchor_results: list[dict] = []
-        anchor_specs = list(getattr(self, "evaluation_spec", {}).get("evaluation_anchors", []))
+        eval_spec = getattr(self, "evaluation_spec", {}) or {}
+        anchor_specs = list(eval_spec.get("evaluation_anchors", []))
+        evaluation_seed = eval_spec.get("evaluation_seed")
+        n_episodes = len(anchor_specs) if anchor_specs else (n_eval_episodes or 4)
 
-        for ep in range(n_eval_episodes):
+        eval_data = getattr(self, "evaluation_data", None)
+        original_data = self.env.data
+        if eval_data is not None:
+            self.env.data = eval_data.reset_index(drop=True)
+
+        for ep in range(n_episodes):
             if self._stop:
                 break
-            obs, _ = self.env.reset()
+            anchor_spec = anchor_specs[ep] if ep < len(anchor_specs) else {}
+            start_index = anchor_spec.get("start_index")
+            reset_options: dict = {}
+            if start_index is not None:
+                reset_options["start_index"] = start_index
+            reset_seed = evaluation_seed if evaluation_seed is not None else None
+            obs, _ = self.env.reset(seed=reset_seed, options=reset_options if reset_options else None)
             done = False
             total_reward = 0.0
             last_balance = self.env.initial_balance
@@ -196,7 +210,6 @@ class Trainer:
 
             episode_rewards.append(total_reward)
             episode_final_balances.append(last_balance)
-            anchor_spec = anchor_specs[ep] if ep < len(anchor_specs) else {}
             anchor_results.append(
                 {
                     "label": anchor_spec.get("label", f"A{ep + 1}"),
@@ -213,6 +226,9 @@ class Trainer:
             if ep == 0:
                 price_series = ep_prices
                 transaction_outcome_series = ep_outcomes
+
+        if eval_data is not None:
+            self.env.data = original_data
 
         if not episode_rewards:
             return {

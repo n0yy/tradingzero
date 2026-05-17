@@ -13,6 +13,7 @@ export type ExecutedTrade = {
   fee: number
   realized_pnl: number
   unrealized_pnl_after: number
+  hold_duration: number
 }
 
 export type TrainingUpdate = {

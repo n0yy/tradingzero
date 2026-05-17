@@ -1,5 +1,6 @@
 import type { TrainingUpdate } from '@/hooks/useTrainingStream'
 import { cn } from '@/lib/utils'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 type Row = {
   label: 'BUY' | 'SELL' | 'NO TRANSACTION'
@@ -30,45 +31,49 @@ export function ActionDistributionPanel({ event }: { event: TrainingUpdate | nul
     (event?.transaction_distribution.no_transaction ?? 0)
 
   return (
-    <article className="card panel">
-      <h2>Transaction Distribution</h2>
-      {event === null ? (
-        <p data-testid="distribution-empty" className="text-sm text-muted-foreground">
-          No live distribution yet — counts appear once a Run streams updates.
-        </p>
-      ) : (
-        <div className="grid gap-3">
-          <div className="grid gap-2">
-            <DistributionRow
-              row={{ label: 'BUY', count: event.transaction_distribution.buy, testId: 'distribution-buy', barClass: 'bg-(--gain)' }}
-              total={total}
-            />
-            <DistributionRow
-              row={{
-                label: 'NO TRANSACTION',
-                count: event.transaction_distribution.no_transaction,
-                testId: 'distribution-no-transaction',
-                barClass: 'bg-muted-foreground/40',
-              }}
-              total={total}
-            />
-            <DistributionRow
-              row={{ label: 'SELL', count: event.transaction_distribution.sell, testId: 'distribution-sell', barClass: 'bg-(--loss)' }}
-              total={total}
-            />
+    <Card>
+      <CardHeader>
+        <CardTitle className="font-semibold">Transaction Distribution</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {event === null ? (
+          <p data-testid="distribution-empty" className="text-sm text-muted-foreground">
+            No live distribution yet — counts appear once a Run streams updates.
+          </p>
+        ) : (
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <DistributionRow
+                row={{ label: 'BUY', count: event.transaction_distribution.buy, testId: 'distribution-buy', barClass: 'bg-(--gain)' }}
+                total={total}
+              />
+              <DistributionRow
+                row={{
+                  label: 'NO TRANSACTION',
+                  count: event.transaction_distribution.no_transaction,
+                  testId: 'distribution-no-transaction',
+                  barClass: 'bg-muted-foreground/40',
+                }}
+                total={total}
+              />
+              <DistributionRow
+                row={{ label: 'SELL', count: event.transaction_distribution.sell, testId: 'distribution-sell', barClass: 'bg-(--loss)' }}
+                total={total}
+              />
+            </div>
+            <dl className="grid grid-cols-2 gap-x-3 border-t border-border pt-2 text-xs">
+              <dt className="text-muted-foreground">Cumulative BUY</dt>
+              <dd data-testid="cumulative-buys" className="text-right font-medium tabular-nums">
+                {event.cumulative_buys}
+              </dd>
+              <dt className="text-muted-foreground">Cumulative SELL</dt>
+              <dd data-testid="cumulative-sells" className="text-right font-medium tabular-nums">
+                {event.cumulative_sells}
+              </dd>
+            </dl>
           </div>
-          <dl className="grid grid-cols-2 gap-x-3 border-t border-border pt-2 text-xs">
-            <dt className="text-muted-foreground">Cumulative BUY</dt>
-            <dd data-testid="cumulative-buys" className="text-right font-medium tabular-nums">
-              {event.cumulative_buys}
-            </dd>
-            <dt className="text-muted-foreground">Cumulative SELL</dt>
-            <dd data-testid="cumulative-sells" className="text-right font-medium tabular-nums">
-              {event.cumulative_sells}
-            </dd>
-          </dl>
-        </div>
-      )}
-    </article>
+        )}
+      </CardContent>
+    </Card>
   )
 }

@@ -1,6 +1,7 @@
 import type { StepBatch, TrainingUpdate } from '@/hooks/useTrainingStream'
 import { cn } from '@/lib/utils'
 import { formatPercent, formatSignedUsd, formatUsd } from '@/lib/format'
+import { Card, CardContent } from '@/components/ui/card'
 
 type KpiCellProps = {
   label: string
@@ -11,16 +12,22 @@ type KpiCellProps = {
 
 function KpiCell({ label, value, testId, sign }: KpiCellProps) {
   return (
-    <article className="card">
-      <span>{label}</span>
-      <strong
-        data-testid={testId}
-        data-sign={sign ?? undefined}
-        className={cn(sign === 'gain' && 'text-(--gain)', sign === 'loss' && 'text-(--loss)')}
-      >
-        {value}
-      </strong>
-    </article>
+    <Card>
+      <CardContent className="px-4">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <strong
+          data-testid={testId}
+          data-sign={sign ?? undefined}
+          className={cn(
+            'mt-1 block text-xl font-semibold tabular-nums',
+            sign === 'gain' && 'text-(--gain)',
+            sign === 'loss' && 'text-(--loss)',
+          )}
+        >
+          {value}
+        </strong>
+      </CardContent>
+    </Card>
   )
 }
 

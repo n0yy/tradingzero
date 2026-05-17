@@ -19,6 +19,7 @@ class ExecutedTrade(BaseModel):
     fee: float
     realized_pnl: float
     unrealized_pnl_after: float
+    hold_duration: int = 0
 
 
 class PromotionGateCheck(BaseModel):
@@ -120,6 +121,7 @@ def _executed_trade(payload: dict | None) -> ExecutedTrade | None:
         fee=float(payload.get('fee', 0.0)),
         realized_pnl=float(payload.get('realized_pnl', 0.0)),
         unrealized_pnl_after=float(payload.get('unrealized_pnl_after', 0.0)),
+        hold_duration=int(payload.get('hold_duration', 0)),
     )
 
 

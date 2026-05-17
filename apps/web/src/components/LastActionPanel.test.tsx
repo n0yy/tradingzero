@@ -32,6 +32,7 @@ const fakeEvent = (overrides: Partial<NonNullable<TrainingUpdate['last_transacti
     fee: 0.05,
     realized_pnl: 0,
     unrealized_pnl_after: 0,
+    hold_duration: 0,
     ...overrides,
   },
 })

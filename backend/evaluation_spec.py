@@ -108,7 +108,7 @@ def _build_anchor_metadata(
         anchors.append(
             {
                 'label': f'A{idx}',
-                'start_index': absolute_index,
+                'start_index': offset,
                 'start_timestamp': _timestamp_for_index(data, absolute_index),
             }
         )
