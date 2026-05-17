@@ -8,6 +8,7 @@ from data.fetcher import normalize_window
 
 
 SIZE_MAP = {0: 0.25, 1: 0.50, 2: 0.75, 3: 1.00}
+TRADE_COOLDOWN = 10
 DIRECTION_LABELS = {0: "HOLD", 1: "BUY", 2: "SELL"}
 MARKET_COLUMNS = ["open", "high", "low", "close", "volume"]
 
@@ -39,9 +40,10 @@ class CryptoEnv(gym.Env):
         self._start_idx = 0
         self._position = 0.0
         self._balance = initial_balance
-        self._returns: list[float] = []
+
         self._avg_entry_price = 0.0
         self._position_open_step: int | None = None
+        self._cooldown_remaining: int = 0
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -54,9 +56,10 @@ class CryptoEnv(gym.Env):
         self._current_step = 0
         self._position = 0.0
         self._balance = self.initial_balance
-        self._returns = []
+
         self._avg_entry_price = 0.0
         self._position_open_step = None
+        self._cooldown_remaining = 0
         obs = self._get_obs()
         return obs, {}
 
@@ -100,6 +103,26 @@ class CryptoEnv(gym.Env):
             return datetime.now(UTC).isoformat()
         return datetime.fromtimestamp(float(raw) / 1000.0, tz=UTC).isoformat()
 
+    def action_masks(self) -> np.ndarray:
+        mask = np.ones(7, dtype=bool)
+        if self._cooldown_remaining > 0:
+            mask[1] = False  # BUY size 25%
+            mask[2] = False  # BUY size 50%
+            mask[3] = False  # BUY size 75%
+            mask[4] = False  # BUY size 100%
+            mask[5] = False  # SELL size 25%
+            mask[6] = False  # SELL size 50%
+            # mask[7] and mask[8] would be SELL 75% and 100% but MultiDiscrete is flat
+        if self._position >= 1.0:
+            mask[1] = False
+            mask[2] = False
+            mask[3] = False
+            mask[4] = False
+        if self._position <= 0.0:
+            mask[5] = False
+            mask[6] = False
+        return mask
+
     def step(self, action):
         action = np.asarray(action)
         direction = int(action[0])
@@ -136,11 +159,14 @@ class CryptoEnv(gym.Env):
 
         traded = abs(self._position - prev_position)
         cost = self.transaction_cost * traded
+        if traded > 0:
+            self._cooldown_remaining = TRADE_COOLDOWN
+        elif self._cooldown_remaining > 0:
+            self._cooldown_remaining -= 1
 
         price_return = (next_price - current_price) / current_price if current_price != 0 else 0.0
         step_return = price_return * self._position - cost
         self._balance *= (1 + step_return)
-        self._returns.append(step_return)
 
         executed_delta = self._position - prev_position
         transaction_outcome = (
@@ -168,19 +194,11 @@ class CryptoEnv(gym.Env):
                 "hold_duration": (self._current_step - self._position_open_step) if self._position_open_step is not None else 0,
             }
 
-        reward = self._compute_reward()
-        # Outperformance vs half-weight buy-and-hold benchmark.
-        # - Holding flat in a down market -> positive reward (avoided loss).
-        # - Holding flat in an up market -> small negative reward (missed gain).
-        # - Long position outperforming benchmark -> positive reward.
-        # Cost is included in agent_return so trades must beat their friction.
-        benchmark_return = price_return * self._position * 0.5
-        agent_return = price_return * self._position - cost
-        reward += (agent_return - benchmark_return) * 0.1
+        reward = step_return
 
-        if direction == 2 and realized_pnl != 0.0 and balance_before > 0:
+        if direction == 2 and traded > 0 and balance_before > 0:
             realized_return = realized_pnl / balance_before
-            reward += float(np.clip(realized_return * 5.0, -1.0, 1.0))
+            reward += float(np.clip(realized_return * 3.0, -0.5, 0.5))
 
         self._current_step += 1
         terminated = self._balance <= 0
@@ -209,15 +227,4 @@ class CryptoEnv(gym.Env):
         }
         return obs, reward, terminated, truncated, info
 
-    def _compute_reward(self, window: int = 100) -> float:
-        if len(self._returns) < 2:
-            return 0.0
-        recent = np.array(self._returns[-window:], dtype=np.float32)
-        mean = np.mean(recent)
-        std = np.std(recent)
-        if std == 0:
-            return 0.0
-        sharpe = float(mean / std)
-        if not np.isfinite(sharpe):
-            return 0.0
-        return sharpe
+

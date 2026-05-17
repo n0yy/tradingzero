@@ -115,6 +115,8 @@ def _build_anchor_metadata(
     return anchors
 
 
+from agent.baseline import compute_baselines
+
 def build_run_evaluation_plan(
     config: dict[str, Any],
     data: pd.DataFrame,
@@ -148,6 +150,13 @@ def build_run_evaluation_plan(
         anchor_count=anchor_count,
     )
 
+    evaluation_data = data.iloc[evaluation_start : evaluation_end + 1].reset_index(drop=True)
+    baselines = compute_baselines(
+        data=evaluation_data,
+        config=config,
+        anchors=anchors,
+    )
+
     evaluation_spec = {
         'training_slice': _slice_metadata(data, training_start, training_end),
         'evaluation_slice': _slice_metadata(data, evaluation_start, evaluation_end),
@@ -155,10 +164,12 @@ def build_run_evaluation_plan(
         'evaluation_episode_length': episode_length,
         'training_seed': training_seed,
         'evaluation_seed': evaluation_seed,
+        'baseline_random_sharpe': baselines['random_agent_sharpe'],
+        'baseline_buy_and_hold_sharpe': baselines['buy_and_hold_sharpe'],
     }
     return RunEvaluationPlan(
         training_data=data.iloc[training_start : training_end + 1].reset_index(drop=True),
-        evaluation_data=data.iloc[evaluation_start : evaluation_end + 1].reset_index(drop=True),
+        evaluation_data=evaluation_data,
         evaluation_spec=evaluation_spec,
     )
 

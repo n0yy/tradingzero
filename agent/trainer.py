@@ -5,6 +5,8 @@ from typing import Optional
 import numpy as np
 import wandb
 from stable_baselines3 import PPO
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import BaseCallback
 
 from logger import logger
@@ -110,10 +112,11 @@ class Trainer:
         self._generation_transaction_distribution: dict[str, int] = _empty_transaction_distribution()
         self._trade_outcomes: dict[str, int] = _empty_trade_outcomes()
 
-    def _build_model(self) -> PPO:
-        return PPO(
+    def _build_model(self) -> MaskablePPO:
+        masked_env = ActionMasker(self.env, lambda env: env.action_masks())
+        return MaskablePPO(
             "MlpPolicy",
-            self.env,
+            masked_env,
             learning_rate=self.learning_rate,
             n_steps=self.n_steps,
             batch_size=self.batch_size,
@@ -122,7 +125,7 @@ class Trainer:
             verbose=0,
         )
 
-    def _evaluate(self, model: PPO, n_eval_episodes: int | None = None) -> dict:
+    def _evaluate(self, model: MaskablePPO, n_eval_episodes: int | None = None) -> dict:
         episode_rewards: list[float] = []
         episode_final_balances: list[float] = []
         episode_sharpes: list[float] = []
@@ -287,7 +290,7 @@ class Trainer:
         return path
 
     def _validate_checkpoint(self, path: Path) -> None:
-        loaded = PPO.load(str(path), env=self.env)
+        loaded = MaskablePPO.load(str(path), env=self.env)
         obs, _ = self.env.reset()
         loaded.predict(obs, deterministic=True)
 
@@ -471,10 +474,10 @@ class Trainer:
             if not self.resume_from.exists():
                 raise FileNotFoundError(f"checkpoint not found: {self.resume_from}")
             logger.info(f"Resuming from explicit checkpoint: {self.resume_from}")
-            self._model = PPO.load(str(self.resume_from), env=self.env)
+            self._model = MaskablePPO.load(str(self.resume_from), env=self.env)
         elif self.resume and best_path.exists():
             logger.info(f"Resuming from checkpoint: {best_path}")
-            self._model = PPO.load(str(best_path), env=self.env)
+            self._model = MaskablePPO.load(str(best_path), env=self.env)
         else:
             if not self.resume:
                 logger.info("Starting from scratch (--no-resume)")

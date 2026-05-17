@@ -71,6 +71,27 @@ The per-Step portfolio outcome used by the live dashboard: BUY, SELL, or NO TRAN
 
 The cumulative ratio of winning realized exits to all realized exits in the current Run. Computed from `realized_pnl` on SELL-side **Executed Trade** records; BUY trades do not count toward the denominator because they do not realize PnL yet.
 
+
+### Trade Cooldown
+
+A mandatory minimum number of Steps that must elapse after any Executed Trade (BUY or SELL) before the agent is allowed to trade again. Enforced via action masking in the environment. Default: 10 Steps (equivalent to 2.5 hours at 15m timeframe). Prevents overtrading without penalising individually profitable trades.
+
+### Action Mask
+
+A per-Step boolean vector over the full action space that marks which actions are valid given the current environment state. Applied via `MaskablePPO` (sb3-contrib) so the policy never receives gradients from invalid actions. Invalid conditions: BUY when position = 1.0, SELL when position = 0.0, any trade during Trade Cooldown.
+
+### Baseline Benchmark
+
+A set of reference strategies evaluated once per Run on the same Evaluation Slice and Evaluation Anchors as the agent. Two baselines are defined: **Random** (action sampled uniformly from the action space each Step) and **Buy-and-Hold** (full BUY at episode start, held until truncation). Baseline Sharpe values are stored in the Evaluation Spec and used as a lower bound for agent quality assessment.
+
+### Step Return Reward
+
+The primary reward signal. Defined as `(balance_after - balance_before) / balance_before` per Step. Direct, non-lagging, and proportional to actual profit or loss each candle.
+
+### Realized PnL Bonus
+
+A secondary reward term applied only when a SELL Executed Trade closes or reduces a position. Defined as `clip(realized_pnl / balance_before * 3.0, -0.5, 0.5)`. Addresses the credit assignment problem — without it, the profit or loss from a trade is spread across many Steps during the hold period, making it hard for the policy to associate the reward with the BUY or SELL decision that caused it. Profit exits receive a positive bonus; loss exits receive a penalty. The multiplier and clip bounds are intentionally conservative to avoid dominating the Step Return signal.
+
 ## Relationships
 
 - A **Requested Action** may or may not produce an **Executed Trade**
