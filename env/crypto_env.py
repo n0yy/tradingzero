@@ -178,6 +178,10 @@ class CryptoEnv(gym.Env):
         agent_return = price_return * self._position - cost
         reward += (agent_return - benchmark_return) * 0.1
 
+        if direction == 2 and realized_pnl != 0.0 and balance_before > 0:
+            realized_return = realized_pnl / balance_before
+            reward += float(np.clip(realized_return * 5.0, -1.0, 1.0))
+
         self._current_step += 1
         terminated = self._balance <= 0
         truncated = self._current_step >= self.episode_length

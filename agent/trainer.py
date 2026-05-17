@@ -125,6 +125,7 @@ class Trainer:
     def _evaluate(self, model: PPO, n_eval_episodes: int | None = None) -> dict:
         episode_rewards: list[float] = []
         episode_final_balances: list[float] = []
+        episode_sharpes: list[float] = []
         transaction_distribution = _empty_transaction_distribution()
         price_series: list[float] = []
         transaction_outcome_series: list[int] = []
@@ -152,6 +153,7 @@ class Trainer:
             done = False
             total_reward = 0.0
             last_balance = self.env.initial_balance
+            ep_step_returns: list[float] = []
             ep_prices: list[float] = []
             ep_outcomes: list[int] = []
             episode_distribution = _empty_transaction_distribution()
@@ -161,7 +163,10 @@ class Trainer:
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, terminated, truncated, info = self.env.step(action)
                 total_reward += float(reward)
+                prev_bal = last_balance
                 last_balance = info.get("balance", last_balance)
+                if prev_bal > 0:
+                    ep_step_returns.append((last_balance - prev_bal) / prev_bal)
                 done = terminated or truncated
                 transaction_outcome = str(info.get("transaction_outcome", "NO_TRANSACTION"))
                 if transaction_outcome == "BUY":
@@ -210,12 +215,20 @@ class Trainer:
 
             episode_rewards.append(total_reward)
             episode_final_balances.append(last_balance)
+            if len(ep_step_returns) >= 2:
+                ret_arr = np.array(ep_step_returns, dtype=np.float32)
+                ep_std = float(np.std(ret_arr))
+                ep_sharpe = float(np.mean(ret_arr) / ep_std) if ep_std > 0 else 0.0
+                ep_sharpe = ep_sharpe if np.isfinite(ep_sharpe) else 0.0
+            else:
+                ep_sharpe = 0.0
+            episode_sharpes.append(ep_sharpe)
             anchor_results.append(
                 {
                     "label": anchor_spec.get("label", f"A{ep + 1}"),
                     "start_index": anchor_spec.get("start_index"),
                     "start_timestamp": anchor_spec.get("start_timestamp"),
-                    "evaluation_sharpe": float(total_reward),
+                    "evaluation_sharpe": ep_sharpe,
                     "executed_trade_count": episode_distribution["buy"] + episode_distribution["sell"],
                     "sell_realized_exit_count": episode_distribution["sell"],
                     "final_balance": last_balance,
@@ -245,9 +258,7 @@ class Trainer:
                 "transaction_outcome_series": transaction_outcome_series,
             }
 
-        rewards = np.array(episode_rewards, dtype=np.float32)
-        std = np.std(rewards)
-        sharpe = float(np.mean(rewards) / std) if std != 0 else 0.0
+        sharpe = float(np.mean(episode_sharpes)) if episode_sharpes else 0.0
         sharpe = sharpe if np.isfinite(sharpe) else 0.0
 
         avg_final_balance = float(np.mean(episode_final_balances))
